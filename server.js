@@ -6,6 +6,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const cruiseRoutes = require("./routes/CrusieBookingRoute/CruiseBooking");
+const cruiseAdvancedRoutes = require("./routes/CruiseBookingAdvancedRoute/CruiseBookingAdvanced")
+const visaRoutes = require("./routes/VisaRoute/VisaBooking"); // Add this line
+
+
+
 // === INCLUDE ALL CRUD ROUTES ===
 app.use('/api/tours', require('./routes/tours'));
 app.use('/api/categories', require('./routes/tourCategories'));
@@ -21,6 +27,10 @@ app.use('/api/itineraries', require('./routes/tourItineraries'));
 app.use('/api/inclusions', require('./routes/tourInclusions'));
 app.use('/api/exclusions', require('./routes/tourExclusions'));
 app.use('/api/images', require('./routes/tourImages'));
+
+app.use("/api", cruiseRoutes);
+app.use("/api", cruiseAdvancedRoutes);
+app.use("/api", visaRoutes); 
 // Add others as needed
 
 app.get('/', (req, res) => res.json({ message: "Kesari Tours API - Full CRUD Ready!" }));
