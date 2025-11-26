@@ -2,6 +2,8 @@
 const express = require('express');
 const cors = require('cors');
 const app = express();
+const path = require('path');
+
 
 app.use(cors());
 app.use(express.json());
@@ -9,6 +11,10 @@ app.use(express.json());
 const cruiseRoutes = require("./routes/CrusieBookingRoute/CruiseBooking");
 const cruiseAdvancedRoutes = require("./routes/CruiseBookingAdvancedRoute/CruiseBookingAdvanced")
 const visaRoutes = require("./routes/VisaRoute/VisaBooking"); // Add this line
+
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
+
 
 
 
