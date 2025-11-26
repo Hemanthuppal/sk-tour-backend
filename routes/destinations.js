@@ -7,11 +7,11 @@ const pool = require('../config/db');
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT d.destination_id, d.name, d.short_desc, 
+      SELECT d.destination_id, d.name, d.short_desc, d.created_at,
              c.name AS country_name, c.country_id, c.is_domestic
       FROM destinations d
       JOIN countries c ON d.country_id = c.country_id
-      ORDER BY c.is_domestic DESC, c.name, d.name
+      ORDER BY d.created_at DESC, c.name, d.name
     `);
     res.json(rows);
   } catch (err) {
@@ -27,7 +27,7 @@ router.get('/country/:country_id', async (req, res) => {
       FROM destinations d
       JOIN countries c ON d.country_id = c.country_id
       WHERE d.country_id = ?
-      ORDER BY d.name
+      ORDER BY  d.created_at DESC, d.name
     `, [req.params.country_id]);
     res.json(rows);
   } catch (err) {

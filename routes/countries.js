@@ -49,7 +49,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // CREATE new country
-router.post('/', async (req, res) => {
+router.post('/add-country', async (req, res) => {
   const { name, is_domestic = 0 } = req.body;
 
   if (!name) {
