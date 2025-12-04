@@ -44,6 +44,37 @@ router.get('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+// GET next tour code
+router.get('/next-tour-code', async (req, res) => {
+  try {
+    // Get the highest tour_code from the database
+    const [rows] = await pool.query(`
+      SELECT tour_code 
+      FROM tours 
+      WHERE tour_code LIKE 'DOMI%' 
+      ORDER BY tour_code DESC 
+      LIMIT 1
+    `);
+    
+    let nextNumber = 1;
+    
+    if (rows.length > 0 && rows[0].tour_code) {
+      // Extract the numeric part and increment
+      const lastCode = rows[0].tour_code;
+      const lastNumber = parseInt(lastCode.replace('DOMI', ''));
+      nextNumber = lastNumber + 1;
+    }
+    
+    // Format with leading zeros
+    const nextCode = `DOMI${nextNumber.toString().padStart(5, '0')}`;
+    
+    res.json({ next_tour_code: nextCode });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // CREATE
 router.post('/', async (req, res) => {
   const { tour_code, title, category_id, primary_destination_id, duration_days, overview, base_price_adult, is_international = 0 } = req.body;
