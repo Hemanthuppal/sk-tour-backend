@@ -73,4 +73,77 @@ router.delete('/:id', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+
+router.get('/tour/full/:tour_id', async (req, res) => {
+  const tourId = req.params.tour_id;
+
+  try {
+    const response = {};
+
+    // 1️⃣ Basic Tour Details
+    const [tourRows] = await pool.query(`
+      SELECT *
+      FROM tours
+      WHERE tour_id = ?
+    `, [tourId]);
+    response.basic_details = tourRows[0] || {};
+
+    // 2️⃣ Departures
+    const [departRows] = await pool.query(`
+      SELECT *, (total_seats - booked_seats) AS available_seats
+      FROM tour_departures
+      WHERE tour_id = ?
+      ORDER BY departure_date ASC
+    `, [tourId]);
+    response.departures = departRows;
+
+    // 3️⃣ Images
+    const [imageRows] = await pool.query(`
+      SELECT image_id, url, caption, is_cover
+      FROM tour_images
+      WHERE tour_id = ?
+      ORDER BY is_cover DESC, image_id ASC
+    `, [tourId]);
+    response.images = imageRows;
+
+    // 4️⃣ Inclusions
+    const [incRows] = await pool.query(`
+      SELECT item
+      FROM tour_inclusions
+      WHERE tour_id = ?
+      ORDER BY inclusion_id ASC
+    `, [tourId]);
+    response.inclusions = incRows.map(r => r.item);
+
+    // 5️⃣ Exclusions
+    const [excRows] = await pool.query(`
+      SELECT item
+      FROM tour_exclusions
+      WHERE tour_id = ?
+      ORDER BY exclusion_id ASC
+    `, [tourId]);
+    response.exclusions = excRows.map(r => r.item);
+
+    // 6️⃣ Itinerary
+    const [itineraryRows] = await pool.query(`
+      SELECT itinerary_id, day, title, description, meals
+      FROM tour_itineraries
+      WHERE tour_id = ?
+      ORDER BY day ASC
+    `, [tourId]);
+    response.itinerary = itineraryRows;
+
+    // Final Response
+    res.json({
+      success: true,
+      tour_id: tourId,
+      ...response
+    });
+
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
 module.exports = router;
