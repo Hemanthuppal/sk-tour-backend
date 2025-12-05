@@ -17,6 +17,36 @@ router.get('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET next tour code
+router.get('/next-tour-code', async (req, res) => {
+  try {
+    // Get the highest tour_code from the database
+    const [rows] = await pool.query(`
+      SELECT tour_code 
+      FROM tours 
+      WHERE tour_code LIKE 'DOMI%' 
+      ORDER BY tour_code DESC 
+      LIMIT 1
+    `);
+    
+    let nextNumber = 1;
+    
+    if (rows.length > 0 && rows[0].tour_code) {
+      // Extract the numeric part and increment
+      const lastCode = rows[0].tour_code;
+      const lastNumber = parseInt(lastCode.replace('DOMI', ''));
+      nextNumber = lastNumber + 1;
+    }
+    
+    // Format with leading zeros
+    const nextCode = `DOMI${nextNumber.toString().padStart(5, '0')}`;
+    
+    res.json({ next_tour_code: nextCode });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET single tour with full details
 router.get('/:id', async (req, res) => {
   try {
@@ -80,7 +110,9 @@ router.get('/tour/full/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ Basic Tour Details
+    // -----------------------------------------------------
+    // 1️⃣ BASIC DETAILS
+    // -----------------------------------------------------
     const [tourRows] = await pool.query(`
       SELECT *
       FROM tours
@@ -88,7 +120,9 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     `, [tourId]);
     response.basic_details = tourRows[0] || {};
 
-    // 2️⃣ Departures
+    // -----------------------------------------------------
+    // 2️⃣ DEPARTURES
+    // -----------------------------------------------------
     const [departRows] = await pool.query(`
       SELECT *, (total_seats - booked_seats) AS available_seats
       FROM tour_departures
@@ -97,7 +131,9 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     `, [tourId]);
     response.departures = departRows;
 
-    // 3️⃣ Images
+    // -----------------------------------------------------
+    // 3️⃣ IMAGES
+    // -----------------------------------------------------
     const [imageRows] = await pool.query(`
       SELECT image_id, url, caption, is_cover
       FROM tour_images
@@ -106,7 +142,9 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     `, [tourId]);
     response.images = imageRows;
 
-    // 4️⃣ Inclusions
+    // -----------------------------------------------------
+    // 4️⃣ INCLUSIONS
+    // -----------------------------------------------------
     const [incRows] = await pool.query(`
       SELECT item
       FROM tour_inclusions
@@ -115,7 +153,9 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     `, [tourId]);
     response.inclusions = incRows.map(r => r.item);
 
-    // 5️⃣ Exclusions
+    // -----------------------------------------------------
+    // 5️⃣ EXCLUSIONS
+    // -----------------------------------------------------
     const [excRows] = await pool.query(`
       SELECT item
       FROM tour_exclusions
@@ -124,7 +164,9 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     `, [tourId]);
     response.exclusions = excRows.map(r => r.item);
 
-    // 6️⃣ Itinerary
+    // -----------------------------------------------------
+    // 6️⃣ ITINERARY
+    // -----------------------------------------------------
     const [itineraryRows] = await pool.query(`
       SELECT itinerary_id, day, title, description, meals
       FROM tour_itineraries
@@ -133,7 +175,83 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     `, [tourId]);
     response.itinerary = itineraryRows;
 
-    // Final Response
+    // -----------------------------------------------------
+    // 7️⃣ COSTS (tour_costs)
+    // -----------------------------------------------------
+    const [costRows] = await pool.query(`
+      SELECT cost_id, pax, standard_hotel, deluxe_hotel, executive_hotel,
+             child_with_bed, child_no_bed
+      FROM tour_costs
+      WHERE tour_id = ?
+      ORDER BY pax ASC
+    `, [tourId]);
+
+    response.costs = costRows;
+
+    // -----------------------------------------------------
+    // 8️⃣ HOTELS (tour_hotels)
+    // -----------------------------------------------------
+    const [hotelRows] = await pool.query(`
+      SELECT hotel_id, city, hotel_name, room_type, nights
+      FROM tour_hotels
+      WHERE tour_id = ?
+      ORDER BY hotel_id ASC
+    `, [tourId]);
+
+    response.hotels = hotelRows;
+
+    // -----------------------------------------------------
+    // 9️⃣ TRANSPORT SEGMENTS (tour_transports)
+    // -----------------------------------------------------
+    const [transportRows] = await pool.query(`
+      SELECT transport_id, mode, from_city, to_city, carrier, number_code,
+             departure_datetime, arrival_datetime, description, sort_order
+      FROM tour_transports
+      WHERE tour_id = ?
+      ORDER BY sort_order ASC, transport_id ASC
+    `, [tourId]);
+
+    response.transport = transportRows;
+
+    // -----------------------------------------------------
+    // 🔟 BOOKING POI (tour_booking_poi)
+    // -----------------------------------------------------
+    const [poiRows] = await pool.query(`
+      SELECT poi_id, item, sort_order
+      FROM tour_booking_poi
+      WHERE tour_id = ?
+      ORDER BY sort_order ASC, poi_id ASC
+    `, [tourId]);
+
+    response.booking_poi = poiRows.map(p => p.item);
+
+    // -----------------------------------------------------
+    // 1️⃣1️⃣ CANCELLATION POLICIES
+    // -----------------------------------------------------
+    const [cancelRows] = await pool.query(`
+      SELECT policy_id, days_min, days_max, charge_percentage, sort_order
+      FROM tour_cancellation_policies
+      WHERE tour_id = ?
+      ORDER BY sort_order ASC, policy_id ASC
+    `, [tourId]);
+
+    response.cancellation_policies = cancelRows;
+
+    // -----------------------------------------------------
+    // 1️⃣2️⃣ INSTRUCTIONS (tour_instructions)
+    // -----------------------------------------------------
+    const [instRows] = await pool.query(`
+      SELECT instruction_id, item, sort_order
+      FROM tour_instructions
+      WHERE tour_id = ?
+      ORDER BY sort_order ASC, instruction_id ASC
+    `, [tourId]);
+
+    response.instructions = instRows.map(r => r.item);
+
+    // -----------------------------------------------------
+    // FINAL
+    // -----------------------------------------------------
     res.json({
       success: true,
       tour_id: tourId,
@@ -144,6 +262,7 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 module.exports = router;

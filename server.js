@@ -12,6 +12,14 @@ const cruiseRoutes = require("./routes/CrusieBookingRoute/CruiseBooking");
 const cruiseAdvancedRoutes = require("./routes/CruiseBookingAdvancedRoute/CruiseBookingAdvanced")
 const visaRoutes = require("./routes/VisaRoute/VisaBooking"); // Add this line
 
+const tourTransportsRouter = require('./routes/tourTransports');
+const tourBookingPoiRouter = require('./routes/tourBookingPoi');
+const tourCancellationRouter = require('./routes/tourCancellation');
+const tourInstructionsRouter = require('./routes/tourInstructions');
+const tourCostsRouter = require('./routes/tourCosts');
+const tourHotelsRouter = require('./routes/tourHotels');
+
+
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 
@@ -33,6 +41,13 @@ app.use('/api/itineraries', require('./routes/tourItineraries'));
 app.use('/api/inclusions', require('./routes/tourInclusions'));
 app.use('/api/exclusions', require('./routes/tourExclusions'));
 app.use('/api/images', require('./routes/tourImages'));
+
+app.use('/api/tour-transports', tourTransportsRouter);
+app.use('/api/tour-booking-poi', tourBookingPoiRouter);
+app.use('/api/tour-cancellation', tourCancellationRouter);
+app.use('/api/tour-instructions', tourInstructionsRouter);
+app.use('/api/tour-costs', tourCostsRouter);
+app.use('/api/tour-hotels', tourHotelsRouter);
 
 app.use("/api", cruiseRoutes);
 app.use("/api", cruiseAdvancedRoutes);
