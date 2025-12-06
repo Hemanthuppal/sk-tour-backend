@@ -79,11 +79,12 @@ router.post('/bulk', async (req, res) => {
       h.city || '',
       h.hotel_name || '',
       h.room_type || null,
-      h.nights ? Number(h.nights) : null
+      h.nights ? Number(h.nights) : null,
+      h.remarks || null
     ]);
 
     await conn.query(
-      `INSERT INTO tour_hotels (tour_id, city, hotel_name, room_type, nights)
+      `INSERT INTO tour_hotels (tour_id, city, hotel_name, room_type, nights, remarks)
        VALUES ?`,
       [values]
     );

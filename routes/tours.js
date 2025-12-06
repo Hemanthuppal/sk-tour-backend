@@ -180,7 +180,7 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // -----------------------------------------------------
     const [costRows] = await pool.query(`
       SELECT cost_id, pax, standard_hotel, deluxe_hotel, executive_hotel,
-             child_with_bed, child_no_bed
+             child_with_bed, child_no_bed, remarks
       FROM tour_costs
       WHERE tour_id = ?
       ORDER BY pax ASC
@@ -192,7 +192,7 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // 8️⃣ HOTELS (tour_hotels)
     // -----------------------------------------------------
     const [hotelRows] = await pool.query(`
-      SELECT hotel_id, city, hotel_name, room_type, nights
+      SELECT hotel_id, city, hotel_name, room_type, nights, remarks
       FROM tour_hotels
       WHERE tour_id = ?
       ORDER BY hotel_id ASC
@@ -205,7 +205,7 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // -----------------------------------------------------
     const [transportRows] = await pool.query(`
       SELECT transport_id, mode, from_city, to_city, carrier, number_code,
-             departure_datetime, arrival_datetime, description, sort_order
+             departure_datetime, arrival_datetime, description, remarks, sort_order
       FROM tour_transports
       WHERE tour_id = ?
       ORDER BY sort_order ASC, transport_id ASC

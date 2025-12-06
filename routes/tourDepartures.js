@@ -39,11 +39,12 @@ router.post('/bulk', async (req, res) => {
       dep.adult_price,
       dep.child_price || null,
       dep.infant_price || null,
-      dep.total_seats || 40
+      dep.total_seats || 40,
+      dep.description || null
     ]);
 
     await conn.query(
-      `INSERT INTO tour_departures (tour_id, departure_date, return_date, adult_price, child_price, infant_price, total_seats) VALUES ?`,
+      `INSERT INTO tour_departures (tour_id, departure_date, return_date, adult_price, child_price, infant_price, total_seats, description) VALUES ?`,
       [values]
     );
 

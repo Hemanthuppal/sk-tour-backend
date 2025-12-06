@@ -146,13 +146,14 @@ router.post('/bulk', async (req, res) => {
       t.departure_datetime ? new Date(t.departure_datetime) : null,
       t.arrival_datetime ? new Date(t.arrival_datetime) : null,
       t.description || null,
+      t.remarks || null,
       index + 1
     ]);
 
     await conn.query(
       `INSERT INTO tour_transports
         (tour_id, mode, from_city, to_city, carrier, number_code,
-         departure_datetime, arrival_datetime, description, sort_order)
+         departure_datetime, arrival_datetime, description, remarks, sort_order)
        VALUES ?`,
       [values]
     );
