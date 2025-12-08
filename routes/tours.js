@@ -76,16 +76,47 @@ router.get('/:id', async (req, res) => {
 
 // CREATE
 router.post('/', async (req, res) => {
-  const { tour_code, title, category_id, primary_destination_id, duration_days, overview, base_price_adult, is_international = 0 } = req.body;
+  const { 
+    tour_code, 
+    title, 
+    category_id, 
+    primary_destination_id, 
+    duration_days, 
+    overview, 
+    base_price_adult, 
+    is_international = 0,
+    cost_remarks,
+    hotel_remarks,
+    transport_remarks
+  } = req.body;
+
   try {
     const [result] = await pool.query(
-      `INSERT INTO tours (tour_code, title, category_id, primary_destination_id, duration_days, overview, base_price_adult, is_international)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [tour_code, title, category_id, primary_destination_id, duration_days, overview, base_price_adult, is_international]
+      `INSERT INTO tours 
+        (tour_code, title, category_id, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        tour_code, 
+        title, 
+        category_id, 
+        primary_destination_id, 
+        duration_days, 
+        overview, 
+        base_price_adult, 
+        is_international,
+        cost_remarks,
+        hotel_remarks,
+        transport_remarks
+      ]
     );
+
     res.status(201).json({ tour_id: result.insertId });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+
+  } catch (err) { 
+    res.status(500).json({ error: err.message }); 
+  }
 });
+
 
 // UPDATE
 router.put('/:id', async (req, res) => {
