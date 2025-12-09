@@ -108,16 +108,17 @@ router.post('/bulk', async (req, res) => {
   try {
     const values = policies.map((p, idx) => [
       tour_id,
-      p.days_min !== '' && p.days_min !== undefined ? Number(p.days_min) : null,
-      p.days_max !== '' && p.days_max !== undefined ? Number(p.days_max) : null,
+      p.days_min !== "" ? Number(p.days_min) : null,
+      p.days_max !== "" ? Number(p.days_max) : null,
       Number(p.charge_percentage),
-      null,           // description
-      idx + 1
+      null,                  // description field not used
+      idx + 1,
+      p.charges || null      // <-- FIXED
     ]);
 
     await conn.query(
       `INSERT INTO tour_cancellation_policies
-        (tour_id, days_min, days_max, charge_percentage, description, sort_order)
+        (tour_id, days_min, days_max, charge_percentage, description, sort_order, charges)
        VALUES ?`,
       [values]
     );
@@ -128,6 +129,7 @@ router.post('/bulk', async (req, res) => {
       tour_id,
       added_count: policies.length
     });
+
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
@@ -135,6 +137,7 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 
 module.exports = router;

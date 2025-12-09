@@ -248,7 +248,7 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // 🔟 BOOKING POI (tour_booking_poi)
     // -----------------------------------------------------
     const [poiRows] = await pool.query(`
-      SELECT poi_id, item, sort_order
+      SELECT poi_id, item, sort_order, amount_details
       FROM tour_booking_poi
       WHERE tour_id = ?
       ORDER BY sort_order ASC, poi_id ASC
@@ -260,7 +260,7 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // 1️⃣1️⃣ CANCELLATION POLICIES
     // -----------------------------------------------------
     const [cancelRows] = await pool.query(`
-      SELECT policy_id, days_min, days_max, charge_percentage, sort_order
+      SELECT policy_id, days_min, days_max, charge_percentage, sort_order, charges
       FROM tour_cancellation_policies
       WHERE tour_id = ?
       ORDER BY sort_order ASC, policy_id ASC

@@ -97,15 +97,17 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    const values = items.map((text, idx) => [
+    const values = items.map((p, idx) => [
       tour_id,
-      null,                  // title (optional)
-      String(text).trim(),
-      idx + 1
+      null,                       // title optional
+      p.item,                     // <-- FIXED
+      idx + 1,
+      p.amount_details || null    // <-- FIXED
     ]);
 
     await conn.query(
-      `INSERT INTO tour_booking_poi (tour_id, title, item, sort_order)
+      `INSERT INTO tour_booking_poi 
+        (tour_id, title, item, sort_order, amount_details)
        VALUES ?`,
       [values]
     );
@@ -116,6 +118,7 @@ router.post('/bulk', async (req, res) => {
       tour_id,
       added_count: items.length
     });
+
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
@@ -123,5 +126,6 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 module.exports = router;
