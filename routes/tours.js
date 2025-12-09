@@ -247,26 +247,37 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // -----------------------------------------------------
     // 🔟 BOOKING POI (tour_booking_poi)
     // -----------------------------------------------------
-    const [poiRows] = await pool.query(`
-      SELECT poi_id, item, sort_order, amount_details
-      FROM tour_booking_poi
-      WHERE tour_id = ?
-      ORDER BY sort_order ASC, poi_id ASC
-    `, [tourId]);
+    // 1️⃣0️⃣ BOOKING POI
+const [poiRows] = await pool.query(`
+  SELECT poi_id, item, sort_order, amount_details
+  FROM tour_booking_poi
+  WHERE tour_id = ?
+  ORDER BY sort_order ASC, poi_id ASC
+`, [tourId]);
 
-    response.booking_poi = poiRows.map(p => p.item);
+response.booking_poi = poiRows.map(p => ({
+  poi_id: p.poi_id,
+  item: p.item,
+  amount_details: p.amount_details
+}));
 
-    // -----------------------------------------------------
-    // 1️⃣1️⃣ CANCELLATION POLICIES
-    // -----------------------------------------------------
-    const [cancelRows] = await pool.query(`
-      SELECT policy_id, days_min, days_max, charge_percentage, sort_order, charges
-      FROM tour_cancellation_policies
-      WHERE tour_id = ?
-      ORDER BY sort_order ASC, policy_id ASC
-    `, [tourId]);
+// 1️⃣1️⃣ CANCELLATION POLICIES
+const [cancelRows] = await pool.query(`
+  SELECT policy_id, days_min, days_max, charge_percentage, sort_order, charges
+  FROM tour_cancellation_policies
+  WHERE tour_id = ?
+  ORDER BY sort_order ASC, policy_id ASC
+`, [tourId]);
 
-    response.cancellation_policies = cancelRows;
+response.cancellation_policies = cancelRows.map(c => ({
+  policy_id: c.policy_id,
+  days_min: c.days_min,
+  days_max: c.days_max,
+  charge_percentage: c.charge_percentage,
+  charges: c.charges,
+  sort_order: c.sort_order
+}));
+
 
     // -----------------------------------------------------
     // 1️⃣2️⃣ INSTRUCTIONS (tour_instructions)
