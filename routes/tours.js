@@ -263,7 +263,7 @@ response.booking_poi = poiRows.map(p => ({
 
 // 1️⃣1️⃣ CANCELLATION POLICIES
 const [cancelRows] = await pool.query(`
-  SELECT policy_id, days_min, days_max, charge_percentage, sort_order, charges
+  SELECT policy_id, days_min, days_max, charge_percentage, sort_order, cancellation_policy, charges
   FROM tour_cancellation_policies
   WHERE tour_id = ?
   ORDER BY sort_order ASC, policy_id ASC
@@ -274,6 +274,7 @@ response.cancellation_policies = cancelRows.map(c => ({
   days_min: c.days_min,
   days_max: c.days_max,
   charge_percentage: c.charge_percentage,
+  cancellation_policy: c.cancellation_policy,
   charges: c.charges,
   sort_order: c.sort_order
 }));
