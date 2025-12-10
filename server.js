@@ -19,6 +19,11 @@ const tourInstructionsRouter = require('./routes/tourInstructions');
 const tourCostsRouter = require('./routes/tourCosts');
 const tourHotelsRouter = require('./routes/tourHotels');
 
+// Import the new routes
+const optionalToursRouter = require('./routes/optionaltours');
+const emiOptionsRouter = require('./routes/emioptions');
+
+
 
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
@@ -47,6 +52,9 @@ app.use('/api/tour-booking-poi', tourBookingPoiRouter);
 app.use('/api/tour-cancellation', tourCancellationRouter);
 app.use('/api/tour-instructions', tourInstructionsRouter);
 app.use('/api/tour-costs', tourCostsRouter);
+app.use('/api/optional-tours', optionalToursRouter);
+app.use('/api/emi-options', emiOptionsRouter);
+
 app.use('/api/tour-hotels', tourHotelsRouter);
 
 app.use("/api", cruiseRoutes);

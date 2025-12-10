@@ -247,38 +247,38 @@ router.get('/tour/full/:tour_id', async (req, res) => {
     // -----------------------------------------------------
     // 🔟 BOOKING POI (tour_booking_poi)
     // -----------------------------------------------------
-    // 1️⃣0️⃣ BOOKING POI
-const [poiRows] = await pool.query(`
-  SELECT poi_id, item, sort_order, amount_details
-  FROM tour_booking_poi
-  WHERE tour_id = ?
-  ORDER BY sort_order ASC, poi_id ASC
-`, [tourId]);
+    const [poiRows] = await pool.query(`
+      SELECT poi_id, item, sort_order, amount_details
+      FROM tour_booking_poi
+      WHERE tour_id = ?
+      ORDER BY sort_order ASC, poi_id ASC
+    `, [tourId]);
 
-response.booking_poi = poiRows.map(p => ({
-  poi_id: p.poi_id,
-  item: p.item,
-  amount_details: p.amount_details
-}));
+    response.booking_poi = poiRows.map(p => ({
+      poi_id: p.poi_id,
+      item: p.item,
+      amount_details: p.amount_details
+    }));
 
-// 1️⃣1️⃣ CANCELLATION POLICIES
-const [cancelRows] = await pool.query(`
-  SELECT policy_id, days_min, days_max, charge_percentage, sort_order, cancellation_policy, charges
-  FROM tour_cancellation_policies
-  WHERE tour_id = ?
-  ORDER BY sort_order ASC, policy_id ASC
-`, [tourId]);
+    // -----------------------------------------------------
+    // 1️⃣1️⃣ CANCELLATION POLICIES
+    // -----------------------------------------------------
+    const [cancelRows] = await pool.query(`
+      SELECT policy_id, days_min, days_max, charge_percentage, sort_order, cancellation_policy, charges
+      FROM tour_cancellation_policies
+      WHERE tour_id = ?
+      ORDER BY sort_order ASC, policy_id ASC
+    `, [tourId]);
 
-response.cancellation_policies = cancelRows.map(c => ({
-  policy_id: c.policy_id,
-  days_min: c.days_min,
-  days_max: c.days_max,
-  charge_percentage: c.charge_percentage,
-  cancellation_policy: c.cancellation_policy,
-  charges: c.charges,
-  sort_order: c.sort_order
-}));
-
+    response.cancellation_policies = cancelRows.map(c => ({
+      policy_id: c.policy_id,
+      days_min: c.days_min,
+      days_max: c.days_max,
+      charge_percentage: c.charge_percentage,
+      cancellation_policy: c.cancellation_policy,
+      charges: c.charges,
+      sort_order: c.sort_order
+    }));
 
     // -----------------------------------------------------
     // 1️⃣2️⃣ INSTRUCTIONS (tour_instructions)
@@ -293,7 +293,44 @@ response.cancellation_policies = cancelRows.map(c => ({
     response.instructions = instRows.map(r => r.item);
 
     // -----------------------------------------------------
-    // FINAL
+    // 1️⃣3️⃣ OPTIONAL TOURS (NEW)
+    // -----------------------------------------------------
+    const [optionalTourRows] = await pool.query(`
+      SELECT optional_tour_id, tour_name, adult_price, child_price
+      FROM optional_tours
+      WHERE tour_id = ?
+      ORDER BY optional_tour_id ASC
+    `, [tourId]);
+
+    response.optional_tours = optionalTourRows.map(ot => ({
+      optional_tour_id: ot.optional_tour_id,
+      tour_name: ot.tour_name,
+      adult_price: ot.adult_price,
+      child_price: ot.child_price
+    }));
+
+    // -----------------------------------------------------
+    // 1️⃣4️⃣ EMI OPTIONS (NEW)
+    // -----------------------------------------------------
+    const [emiRows] = await pool.query(`
+      SELECT emi_option_id, loan_amount, particulars, months, emi
+      FROM emi_options
+      WHERE tour_id = ?
+      ORDER BY months ASC
+    `, [tourId]);
+
+    response.emi_options = {
+      loan_amount: emiRows.length > 0 ? emiRows[0].loan_amount : null,
+      options: emiRows.map(eo => ({
+        emi_option_id: eo.emi_option_id,
+        particulars: eo.particulars,
+        months: eo.months,
+        emi: eo.emi
+      }))
+    };
+
+    // -----------------------------------------------------
+    // FINAL RESPONSE
     // -----------------------------------------------------
     res.json({
       success: true,
@@ -302,7 +339,12 @@ response.cancellation_policies = cancelRows.map(c => ({
     });
 
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error('Error fetching full tour data:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err.message,
+      message: 'Failed to fetch tour data'
+    });
   }
 });
 
