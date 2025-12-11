@@ -107,18 +107,17 @@ router.post('/bulk', async (req, res) => {
 
   try {
     const values = policies.map((p, idx) => [
-  tour_id,
-  null,   // days_min removed
-  null,   // days_max removed
-  null,   // charge_percentage removed
-  p.cancellation_policy || null,  // mapped to description
-  idx + 1,
-  p.charges || null               // charges description
-]);
+      tour_id,
+      p.cancellation_policy || null,
+      idx + 1,                 // sort_order
+      p.charges || null
+    ]);
+
+    console.log("values", values);
 
     await conn.query(
       `INSERT INTO tour_cancellation_policies
-        (tour_id, days_min, days_max, charge_percentage, cancellation_policy, sort_order, charges)
+       (tour_id, cancellation_policy, sort_order, charges)
        VALUES ?`,
       [values]
     );
@@ -137,6 +136,7 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 
 
