@@ -7,15 +7,27 @@ const pool = require('../config/db');
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT t.*, c.name AS category_name, d.name AS primary_destination_name
+      SELECT t.*, d.name AS primary_destination_name
       FROM tours t
-      LEFT JOIN tour_categories c ON t.category_id = c.category_id
       LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
       ORDER BY t.tour_id DESC
     `);
     res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+
+// router.get('/', async (req, res) => {
+//   try {
+//     const [rows] = await pool.query(`
+//       SELECT t.*, c.name AS category_name, d.name AS primary_destination_name
+//       FROM tours t
+//       LEFT JOIN tour_categories c ON t.category_id = c.category_id
+//       LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+//       ORDER BY t.tour_id DESC
+//     `);
+//     res.json(rows);
+//   } catch (err) { res.status(500).json({ error: err.message }); }
+// });
 
 // GET next tour code
 router.get('/next-tour-code', async (req, res) => {
@@ -79,7 +91,7 @@ router.post('/', async (req, res) => {
   const { 
     tour_code, 
     title, 
-    category_id, 
+    // category_id, 
     primary_destination_id, 
     duration_days, 
     overview, 
@@ -93,12 +105,12 @@ router.post('/', async (req, res) => {
   try {
     const [result] = await pool.query(
       `INSERT INTO tours 
-        (tour_code, title, category_id, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (tour_code, title, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_code, 
         title, 
-        category_id, 
+        // category_id, 
         primary_destination_id, 
         duration_days, 
         overview, 
