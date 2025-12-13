@@ -135,43 +135,50 @@ router.post('/bulk', async (req, res) => {
 
   try {
     const values = departures.map(dep => {
-      // Handle both Individual and Group departures
       const isIndividual = dep.tour_type === 'Individual';
-      
-      // For Individual: Use departure_text as description
-      // For Group: Use structured fields
+
       return [
         tour_id,
         dep.tour_type || 'Group',
-        isIndividual ? null : (dep.description || null), // description for Group
-        isIndividual ? (dep.description || null) : null, // departure_text for Individual
+
+        // description (Group only)
+        isIndividual ? null : (dep.description || null),
+
+        // departure_text (Individual only) ✅ FIX
+        isIndividual ? (dep.departure_text || null) : null,
+
         // Dates
         dep.start_date || null,
         dep.end_date || null,
         dep.departure_date || null,
         dep.return_date || null,
-        // Status and pricing
+
+        // Pricing & status
         dep.status || 'Available',
-        dep.price || dep.adult_price || null, // Use price or adult_price
+        dep.price || dep.adult_price || null,
         dep.child_price || null,
         dep.infant_price || null,
-        dep.total_seats || 40,
+
+        dep.total_seats || 0,
         dep.booked_seats || 0,
-        // 3 Star prices (from tour_costs object if exists)
+
+        // 3 Star
         dep.tour_costs?.threeStar?.perPaxTwin || null,
         dep.tour_costs?.threeStar?.perPaxTriple || null,
         dep.tour_costs?.threeStar?.childWithBed || null,
         dep.tour_costs?.threeStar?.childWithoutBed || null,
         dep.tour_costs?.threeStar?.infant || null,
         dep.tour_costs?.threeStar?.perPaxSingle || null,
-        // 4 Star prices
+
+        // 4 Star
         dep.tour_costs?.fourStar?.perPaxTwin || null,
         dep.tour_costs?.fourStar?.perPaxTriple || null,
         dep.tour_costs?.fourStar?.childWithBed || null,
         dep.tour_costs?.fourStar?.childWithoutBed || null,
         dep.tour_costs?.fourStar?.infant || null,
         dep.tour_costs?.fourStar?.perPaxSingle || null,
-        // 5 Star prices
+
+        // 5 Star
         dep.tour_costs?.fiveStar?.perPaxTwin || null,
         dep.tour_costs?.fiveStar?.perPaxTriple || null,
         dep.tour_costs?.fiveStar?.childWithBed || null,
@@ -201,20 +208,21 @@ router.post('/bulk', async (req, res) => {
 
     await conn.query(query, [values]);
     await conn.commit();
-    
+
     res.status(201).json({
       message: `${departures.length} departures added successfully`,
-      tour_id,
-      added_count: departures.length
+      tour_id
     });
+
   } catch (err) {
-    console.error("❌ Bulk departures insert error:", err);
     await conn.rollback();
+    console.error("❌ Bulk departures insert error:", err);
     res.status(500).json({ error: err.message });
   } finally {
     conn.release();
   }
 });
+
 
 // Update departure
 router.put('/:id', async (req, res) => {
