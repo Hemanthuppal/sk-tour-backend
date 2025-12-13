@@ -136,34 +136,31 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    const values = items.map((t, index) => [
+    const values = items.map((t, i) => [
       tour_id,
-      t.mode || 'Flight',
-      t.from_city || '',
-      t.to_city || '',
-      t.carrier || null,
-      t.number_code || null,
-      t.departure_datetime ? new Date(t.departure_datetime) : null,
-      t.arrival_datetime ? new Date(t.arrival_datetime) : null,
       t.description || null,
-      t.remarks || null,
-      index + 1
+      t.airline || null,
+      t.flight_no || null,
+      t.from_city || null,
+      t.from_date || null,
+      t.from_time || null,
+      t.to_city || null,
+      t.to_date || null,
+      t.to_time || null,
+      t.via || null,
+      i + 1
     ]);
 
     await conn.query(
       `INSERT INTO tour_transports
-        (tour_id, mode, from_city, to_city, carrier, number_code,
-         departure_datetime, arrival_datetime, description, remarks, sort_order)
+      (tour_id, description, airline, flight_no, from_city, from_date, from_time,
+       to_city, to_date, to_time, via, sort_order)
        VALUES ?`,
       [values]
     );
 
     await conn.commit();
-    res.status(201).json({
-      message: `${items.length} transport segments added successfully`,
-      tour_id,
-      added_count: items.length
-    });
+    res.status(201).json({ message: 'Transport saved', count: items.length });
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
@@ -171,6 +168,7 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 
 module.exports = router;
