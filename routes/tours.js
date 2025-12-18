@@ -16,49 +16,56 @@ router.get('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// router.get('/', async (req, res) => {
-//   try {
-//     const [rows] = await pool.query(`
-//       SELECT t.*, c.name AS category_name, d.name AS primary_destination_name
-//       FROM tours t
-//       LEFT JOIN tour_categories c ON t.category_id = c.category_id
-//       LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
-//       ORDER BY t.tour_id DESC
-//     `);
-//     res.json(rows);
-//   } catch (err) { res.status(500).json({ error: err.message }); }
-// });
-
-// GET next tour code
+// GET next tour code - MODIFIED FOR BOTH INDIVIDUAL AND GROUP TOURS
 router.get('/next-tour-code', async (req, res) => {
   try {
-    // Get the highest tour_code from the database
+    // Get the tour_type from query parameters
+    const { tour_type } = req.query;
+    
+    if (!tour_type) {
+      return res.status(400).json({ error: 'tour_type query parameter is required' });
+    }
+    
+    // Determine prefix based on tour type
+    let prefix;
+    if (tour_type.toLowerCase() === 'individual') {
+      prefix = 'DOMI';
+    } else if (tour_type.toLowerCase() === 'group') {
+      prefix = 'DOMG';
+    } else {
+      return res.status(400).json({ error: 'Invalid tour_type. Use "individual" or "group"' });
+    }
+    
+    // Get the highest tour_code for this specific tour type
     const [rows] = await pool.query(`
       SELECT tour_code 
       FROM tours 
-      WHERE tour_code LIKE 'DOMI%' 
+      WHERE tour_code LIKE ? 
       ORDER BY tour_code DESC 
       LIMIT 1
-    `);
+    `, [`${prefix}%`]);
     
     let nextNumber = 1;
     
     if (rows.length > 0 && rows[0].tour_code) {
       // Extract the numeric part and increment
       const lastCode = rows[0].tour_code;
-      const lastNumber = parseInt(lastCode.replace('DOMI', ''));
-      nextNumber = lastNumber + 1;
+      const lastNumber = parseInt(lastCode.replace(prefix, ''));
+      nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1;
     }
     
-    // Format with leading zeros
-    const nextCode = `DOMI${nextNumber.toString().padStart(5, '0')}`;
+    // Format with leading zeros (5 digits total for 4 zeros after prefix)
+    const nextCode = `${prefix}${nextNumber.toString().padStart(5, '0')}`;
     
-    res.json({ next_tour_code: nextCode });
+    res.json({ 
+      next_tour_code: nextCode,
+      tour_type: tour_type,
+      prefix: prefix
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
-
 // GET single tour with full details
 router.get('/:id', async (req, res) => {
   try {
@@ -92,7 +99,6 @@ router.post('/', async (req, res) => {
     tour_code, 
     title, 
     tour_type,
-    // category_id, 
     primary_destination_id, 
     duration_days, 
     overview, 
@@ -109,14 +115,13 @@ router.post('/', async (req, res) => {
   try {
     const [result] = await pool.query(
       `INSERT INTO tours 
-        (tour_code, title, tour_type, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks
+        (tour_code, title, tour_type, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks,
         emi_remarks, booking_poi_remarks, cancellation_remarks)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_code, 
         title, 
         tour_type,
-        // category_id, 
         primary_destination_id, 
         duration_days, 
         overview, 
@@ -138,7 +143,6 @@ router.post('/', async (req, res) => {
   }
 });
 
-
 // UPDATE
 router.put('/:id', async (req, res) => {
   try {
@@ -154,7 +158,6 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: "Tour deleted" });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
-
 
 router.get('/tour/full/individual/:tour_id', async (req, res) => {
   const tourId = req.params.tour_id;
@@ -311,8 +314,5 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-
-
 
 module.exports = router;
