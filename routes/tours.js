@@ -100,14 +100,18 @@ router.post('/', async (req, res) => {
     is_international = 0,
     cost_remarks,
     hotel_remarks,
-    transport_remarks
+    transport_remarks,
+    emi_remarks,
+    booking_poi_remarks,
+    cancellation_remarks,
   } = req.body;
 
   try {
     const [result] = await pool.query(
       `INSERT INTO tours 
-        (tour_code, title, tour_type, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (tour_code, title, tour_type, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks
+        emi_remarks, booking_poi_remarks, cancellation_remarks)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_code, 
         title, 
@@ -120,7 +124,10 @@ router.post('/', async (req, res) => {
         is_international,
         cost_remarks,
         hotel_remarks,
-        transport_remarks
+        transport_remarks,
+        emi_remarks,
+        booking_poi_remarks,
+        cancellation_remarks,
       ]
     );
 
