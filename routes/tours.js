@@ -17,6 +17,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET next tour code - MODIFIED FOR BOTH INDIVIDUAL AND GROUP TOURS
+
 router.get('/next-tour-code', async (req, res) => {
   try {
     // Get the tour_type from query parameters
@@ -26,14 +27,33 @@ router.get('/next-tour-code', async (req, res) => {
       return res.status(400).json({ error: 'tour_type query parameter is required' });
     }
     
-    // Determine prefix based on tour type
+    // Determine prefix based on tour type (case-insensitive)
     let prefix;
-    if (tour_type.toLowerCase() === 'individual') {
-      prefix = 'DOMI';
-    } else if (tour_type.toLowerCase() === 'group') {
-      prefix = 'DOMG';
-    } else {
-      return res.status(400).json({ error: 'Invalid tour_type. Use "individual" or "group"' });
+    const type = tour_type.toLowerCase();
+    
+    switch(type) {
+      case 'individual':
+        prefix = 'DOMI';
+        break;
+      case 'group':
+        prefix = 'DOMG';
+        break;
+      case 'ladies':
+        prefix = 'DOML'; // Ladies tour code prefix
+        break;
+      case 'senior':
+        prefix = 'DOMS'; // Senior tour code prefix
+        break;
+      case 'student':
+        prefix = 'DOMT'; // Student tour code prefix (using T for STudent to avoid conflict)
+        break;
+      case 'honeymoon':
+        prefix = 'DOMH'; // Honeymoon tour code prefix
+        break;
+      default:
+        return res.status(400).json({ 
+          error: 'Invalid tour_type. Valid types: individual, group, ladies, senior, student, honeymoon' 
+        });
     }
     
     // Get the highest tour_code for this specific tour type
@@ -66,6 +86,7 @@ router.get('/next-tour-code', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // GET single tour with full details
 router.get('/:id', async (req, res) => {
   try {
