@@ -15,19 +15,12 @@ router.get('/test', (req, res) => {
 // @route   GET /api/videos
 // @desc    Get all active videos for frontend
 // @access  Public
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   console.log('📥 Fetching active videos...');
   
-  const sql = 'SELECT * FROM video_carousel WHERE is_active = TRUE ORDER BY display_order ASC, created_at DESC';
-  
-  pool.query(sql, (err, results) => {
-    if (err) {
-      console.error('❌ Database error fetching videos:', err.message);
-      return res.status(500).json({ 
-        error: 'Database error',
-        message: err.message
-      });
-    }
+  try {
+    const sql = 'SELECT * FROM video_carousel WHERE is_active = TRUE ORDER BY display_order ASC, created_at DESC';
+    const [results] = await pool.execute(sql);
     
     console.log(`✅ Found ${results.length} active videos`);
     
@@ -45,25 +38,24 @@ router.get('/', (req, res) => {
     });
     
     res.json(videosWithFullUrl);
-  });
+  } catch (err) {
+    console.error('❌ Database error fetching videos:', err.message);
+    return res.status(500).json({ 
+      error: 'Database error',
+      message: err.message
+    });
+  }
 });
 
 // @route   GET /api/videos/admin
 // @desc    Get all videos for admin panel
 // @access  Public
-router.get('/admin', (req, res) => {
+router.get('/admin', async (req, res) => {
   console.log('📥 Fetching all videos for admin...');
   
-  const sql = 'SELECT * FROM video_carousel ORDER BY display_order ASC, created_at DESC';
-  
-  pool.query(sql, (err, results) => {
-    if (err) {
-      console.error('❌ Database error fetching admin videos:', err.message);
-      return res.status(500).json({ 
-        error: 'Database error',
-        message: err.message
-      });
-    }
+  try {
+    const sql = 'SELECT * FROM video_carousel ORDER BY display_order ASC, created_at DESC';
+    const [results] = await pool.execute(sql);
     
     console.log(`✅ Found ${results.length} videos`);
     
@@ -81,13 +73,19 @@ router.get('/admin', (req, res) => {
     });
     
     res.json(videosWithFullUrl);
-  });
+  } catch (err) {
+    console.error('❌ Database error fetching admin videos:', err.message);
+    return res.status(500).json({ 
+      error: 'Database error',
+      message: err.message
+    });
+  }
 });
 
 // @route   POST /api/videos
 // @desc    Add new video with file upload
 // @access  Public
-router.post('/', upload.single('videoFile'), (req, res) => {
+router.post('/', upload.single('videoFile'), async (req, res) => {
   console.log('⬆️  Uploading new video...');
   
   try {
@@ -128,41 +126,27 @@ router.post('/', upload.single('videoFile'), (req, res) => {
     
     console.log('📊 SQL values:', values);
     
-    pool.query(sql, values, (err, result) => {
-      if (err) {
-        deleteFile(req.file.path);
-        console.error('❌ Error inserting video:', err.message);
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: err.message
-        });
+    const [result] = await pool.execute(sql, values);
+    console.log('✅ Video inserted with ID:', result.insertId);
+    
+    // Get the newly inserted video
+    const [newVideoResults] = await pool.execute('SELECT * FROM video_carousel WHERE id = ?', [result.insertId]);
+    
+    if (newVideoResults.length === 0) {
+      return res.status(500).json({ error: '❌ Failed to retrieve created video' });
+    }
+    
+    const newVideo = newVideoResults[0];
+    const fullUrl = `${req.protocol}://${req.get('host')}${newVideo.video_url}`;
+    
+    res.status(201).json({
+      message: '✅ Video added successfully!',
+      id: result.insertId,
+      video: {
+        ...newVideo,
+        video_url: fullUrl,
+        is_active: Boolean(newVideo.is_active)
       }
-      
-      console.log('✅ Video inserted with ID:', result.insertId);
-      
-      // Get the newly inserted video
-      pool.query('SELECT * FROM video_carousel WHERE id = ?', [result.insertId], (err, results) => {
-        if (err) {
-          console.error('❌ Error fetching new video:', err.message);
-          return res.status(500).json({ 
-            error: 'Database error',
-            message: err.message
-          });
-        }
-        
-        const newVideo = results[0];
-        const fullUrl = `${req.protocol}://${req.get('host')}${newVideo.video_url}`;
-        
-        res.status(201).json({
-          message: '✅ Video added successfully!',
-          id: result.insertId,
-          video: {
-            ...newVideo,
-            video_url: fullUrl,
-            is_active: Boolean(newVideo.is_active)
-          }
-        });
-      });
     });
     
   } catch (error) {
@@ -182,28 +166,22 @@ router.post('/', upload.single('videoFile'), (req, res) => {
 // @route   PUT /api/videos/:id
 // @desc    Update video details
 // @access  Public
-router.put('/:id', upload.single('videoFile'), (req, res) => {
+router.put('/:id', upload.single('videoFile'), async (req, res) => {
   const videoId = req.params.id;
   console.log(`✏️  Updating video ID: ${videoId}`);
   
-  // Check if video exists
-  pool.query('SELECT video_url FROM video_carousel WHERE id = ?', [videoId], (err, results) => {
-    if (err) {
-      console.error('❌ Error finding video:', err.message);
-      return res.status(500).json({ 
-        error: 'Database error',
-        message: err.message
-      });
-    }
+  try {
+    // Check if video exists
+    const [videoResults] = await pool.execute('SELECT video_url FROM video_carousel WHERE id = ?', [videoId]);
     
-    if (results.length === 0) {
+    if (videoResults.length === 0) {
       if (req.file && req.file.path) {
         deleteFile(req.file.path);
       }
       return res.status(404).json({ error: '❌ Video not found' });
     }
     
-    const oldVideo = results[0];
+    const oldVideo = videoResults[0];
     let video_url = oldVideo.video_url;
     let oldFilePath = null;
     
@@ -253,55 +231,46 @@ router.put('/:id', upload.single('videoFile'), (req, res) => {
       videoId
     ];
     
-    pool.query(sql, values, (err, result) => {
-      if (err) {
-        if (req.file && req.file.path) {
-          deleteFile(req.file.path);
-        }
-        console.error('❌ Error updating video:', err.message);
-        return res.status(500).json({ 
-          error: 'Database error', 
-          message: err.message
-        });
-      }
-      
-      if (oldFilePath) {
-        deleteFile(oldFilePath);
-      }
-      
-      console.log('✅ Video updated, affected rows:', result.affectedRows);
-      
-      res.json({ 
-        message: '✅ Video updated successfully!',
-        updated: result.affectedRows 
-      });
+    const [result] = await pool.execute(sql, values);
+    
+    if (oldFilePath) {
+      deleteFile(oldFilePath);
+    }
+    
+    console.log('✅ Video updated, affected rows:', result.affectedRows);
+    
+    res.json({ 
+      message: '✅ Video updated successfully!',
+      updated: result.affectedRows 
     });
-  });
+    
+  } catch (err) {
+    if (req.file && req.file.path) {
+      deleteFile(req.file.path);
+    }
+    console.error('❌ Error updating video:', err.message);
+    return res.status(500).json({ 
+      error: 'Database error', 
+      message: err.message
+    });
+  }
 });
 
 // @route   DELETE /api/videos/:id
 // @desc    Delete video
 // @access  Public
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   const videoId = req.params.id;
   console.log(`🗑️  Deleting video ID: ${videoId}`);
   
-  const getSql = 'SELECT video_url FROM video_carousel WHERE id = ?';
-  
-  pool.query(getSql, [videoId], (err, results) => {
-    if (err) {
-      console.error('❌ Error finding video:', err.message);
-      return res.status(500).json({ 
-        error: 'Database error',
-        message: err.message
-      });
-    }
+  try {
+    const [videoResults] = await pool.execute('SELECT video_url FROM video_carousel WHERE id = ?', [videoId]);
     
-    if (results.length === 0) {
+    if (videoResults.length === 0) {
       return res.status(404).json({ error: '❌ Video not found' });
     }
     
-    const videoUrl = results[0].video_url;
+    const videoUrl = videoResults[0].video_url;
     
     if (videoUrl && !videoUrl.startsWith('http')) {
       const fileName = path.basename(videoUrl);
@@ -309,44 +278,33 @@ router.delete('/:id', (req, res) => {
       deleteFile(filePath);
     }
     
-    const deleteSql = 'DELETE FROM video_carousel WHERE id = ?';
+    const [result] = await pool.execute('DELETE FROM video_carousel WHERE id = ?', [videoId]);
     
-    pool.query(deleteSql, [videoId], (err, result) => {
-      if (err) {
-        console.error('❌ Error deleting video:', err.message);
-        return res.status(500).json({ 
-          error: 'Database error',
-          message: err.message
-        });
-      }
-      
-      console.log('✅ Video deleted, affected rows:', result.affectedRows);
-      
-      res.json({ 
-        message: '✅ Video deleted successfully!',
-        deleted: result.affectedRows 
-      });
+    console.log('✅ Video deleted, affected rows:', result.affectedRows);
+    
+    res.json({ 
+      message: '✅ Video deleted successfully!',
+      deleted: result.affectedRows 
     });
-  });
+    
+  } catch (err) {
+    console.error('❌ Error deleting video:', err.message);
+    return res.status(500).json({ 
+      error: 'Database error',
+      message: err.message
+    });
+  }
 });
 
 // @route   PATCH /api/videos/:id/toggle
 // @desc    Toggle video active status
 // @access  Public
-router.patch('/:id/toggle', (req, res) => {
+router.patch('/:id/toggle', async (req, res) => {
   const videoId = req.params.id;
   console.log(`🔄 Toggling video status ID: ${videoId}`);
   
-  const sql = 'UPDATE video_carousel SET is_active = NOT is_active WHERE id = ?';
-  
-  pool.query(sql, [videoId], (err, result) => {
-    if (err) {
-      console.error('❌ Error toggling video status:', err.message);
-      return res.status(500).json({ 
-        error: 'Database error',
-        message: err.message
-      });
-    }
+  try {
+    const [result] = await pool.execute('UPDATE video_carousel SET is_active = NOT is_active WHERE id = ?', [videoId]);
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: '❌ Video not found' });
@@ -356,13 +314,20 @@ router.patch('/:id/toggle', (req, res) => {
       message: '✅ Video status updated!',
       updated: result.affectedRows 
     });
-  });
+    
+  } catch (err) {
+    console.error('❌ Error toggling video status:', err.message);
+    return res.status(500).json({ 
+      error: 'Database error',
+      message: err.message
+    });
+  }
 });
 
 // @route   PATCH /api/videos/reorder
 // @desc    Reorder videos
 // @access  Public
-router.patch('/reorder', (req, res) => {
+router.patch('/reorder', async (req, res) => {
   const { videos } = req.body;
   
   if (!Array.isArray(videos)) {
@@ -371,42 +336,40 @@ router.patch('/reorder', (req, res) => {
   
   console.log(`🔄 Reordering ${videos.length} videos...`);
   
-  // Use a loop instead of Promise.all for callback style
-  let completed = 0;
-  let hasError = false;
-  
-  videos.forEach((video, index) => {
-    pool.query(
-      'UPDATE video_carousel SET display_order = ? WHERE id = ?',
-      [video.display_order, video.id],
-      (err) => {
-        if (err && !hasError) {
-          hasError = true;
-          console.error('❌ Error reordering videos:', err);
-          return res.status(500).json({ error: 'Failed to reorder videos' });
-        }
-        
-        completed++;
-        if (completed === videos.length && !hasError) {
-          res.json({ message: '✅ Videos reordered successfully!' });
-        }
+  try {
+    // Use transaction for better reliability
+    const connection = await pool.getConnection();
+    
+    try {
+      await connection.beginTransaction();
+      
+      for (const video of videos) {
+        await connection.execute(
+          'UPDATE video_carousel SET display_order = ? WHERE id = ?',
+          [video.display_order, video.id]
+        );
       }
-    );
-  });
+      
+      await connection.commit();
+      res.json({ message: '✅ Videos reordered successfully!' });
+      
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+    
+  } catch (error) {
+    console.error('❌ Error reordering videos:', error);
+    res.status(500).json({ error: 'Failed to reorder videos' });
+  }
 });
 
 // Health check endpoint
-router.get('/health/check', (req, res) => {
-  pool.query('SELECT 1 as test', (err) => {
-    if (err) {
-      return res.status(500).json({ 
-        status: 'ERROR', 
-        service: 'Video Carousel API',
-        database: 'Disconnected',
-        error: err.message,
-        timestamp: new Date().toISOString()
-      });
-    }
+router.get('/health/check', async (req, res) => {
+  try {
+    await pool.execute('SELECT 1 as test');
     
     res.json({ 
       status: 'OK', 
@@ -414,11 +377,19 @@ router.get('/health/check', (req, res) => {
       database: 'Connected',
       timestamp: new Date().toISOString()
     });
-  });
+  } catch (err) {
+    return res.status(500).json({ 
+      status: 'ERROR', 
+      service: 'Video Carousel API',
+      database: 'Disconnected',
+      error: err.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Create table endpoint (for debugging)
-router.get('/create-table', (req, res) => {
+router.get('/create-table', async (req, res) => {
   const createTableSQL = `
     CREATE TABLE IF NOT EXISTS video_carousel (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -434,19 +405,18 @@ router.get('/create-table', (req, res) => {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `;
   
-  pool.query(createTableSQL, (err, result) => {
-    if (err) {
-      return res.status(500).json({ 
-        error: 'Failed to create table',
-        message: err.message
-      });
-    }
-    
+  try {
+    const [result] = await pool.execute(createTableSQL);
     res.json({ 
       message: 'Table created successfully!',
       result: result
     });
-  });
+  } catch (err) {
+    return res.status(500).json({ 
+      error: 'Failed to create table',
+      message: err.message
+    });
+  }
 });
 
 module.exports = router;
