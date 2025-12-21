@@ -166,18 +166,75 @@ router.post('/', async (req, res) => {
 
 // UPDATE
 router.put('/:id', async (req, res) => {
+  const tourId = req.params.id;
+  const updateData = req.body;
+
   try {
-    await pool.query('UPDATE tours SET ? WHERE tour_id = ?', [req.body, req.params.id]);
-    res.json({ message: "Tour updated" });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    // Check if tour exists
+    const [existingTour] = await pool.query(
+      'SELECT tour_id FROM tours WHERE tour_id = ?',
+      [tourId]
+    );
+
+    if (existingTour.length === 0) {
+      return res.status(404).json({ message: "Tour not found" });
+    }
+
+    // List of allowed fields to update
+    const allowedFields = [
+      'title', 'tour_type', 'primary_destination_id', 'duration_days',
+      'overview', 'base_price_adult', 'is_international', 'cost_remarks',
+      'hotel_remarks', 'transport_remarks', 'emi_remarks',
+      'booking_poi_remarks', 'cancellation_remarks'
+    ];
+
+    // Filter and prepare update data
+    const filteredData = {};
+    for (const field of allowedFields) {
+      if (updateData[field] !== undefined) {
+        filteredData[field] = updateData[field];
+      }
+    }
+
+    // Add updated_at timestamp
+    filteredData.updated_at = new Date();
+
+    console.log('Updating tour:', tourId, 'with data:', filteredData);
+
+    const [result] = await pool.query(
+      'UPDATE tours SET ? WHERE tour_id = ?',
+      [filteredData, tourId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(400).json({ message: "Failed to update tour" });
+    }
+
+    res.json({ 
+      success: true,
+      message: "Tour updated successfully",
+      tour_id: tourId 
+    });
+  } catch (err) {
+    console.error('Error updating tour:', err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message,
+      details: err.sqlMessage || 'Database error'
+    });
+  }
 });
 
 // DELETE
-router.delete('/:id', async (req, res) => {
+// In each route file (departures.js, tour-costs.js, etc.)
+router.delete('/bulk/:tour_id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM tours WHERE tour_id = ?', [req.params.id]);
-    res.json({ message: "Tour deleted" });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+    const tourId = req.params.tour_id;
+    await pool.query('DELETE FROM tour_departures WHERE tour_id = ?', [tourId]);
+    res.json({ success: true, message: 'All departures deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 router.get('/tour/full/individual/:tour_id', async (req, res) => {
