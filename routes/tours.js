@@ -230,8 +230,8 @@ router.put('/:id', async (req, res) => {
 router.delete('/bulk/:tour_id', async (req, res) => {
   try {
     const tourId = req.params.tour_id;
-    await pool.query('DELETE FROM tour_departures WHERE tour_id = ?', [tourId]);
-    res.json({ success: true, message: 'All departures deleted' });
+    await pool.query('DELETE FROM tours WHERE tour_id = ?', [tourId]);
+    res.json({ success: true, message: 'Tour is deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
