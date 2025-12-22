@@ -131,14 +131,16 @@ router.post('/', async (req, res) => {
     emi_remarks,
     booking_poi_remarks,
     cancellation_remarks,
+    status = 1
   } = req.body;
 
   try {
     const [result] = await pool.query(
       `INSERT INTO tours 
-        (tour_code, title, tour_type, primary_destination_id, duration_days, overview, base_price_adult, is_international, cost_remarks, hotel_remarks, transport_remarks,
-        emi_remarks, booking_poi_remarks, cancellation_remarks)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (tour_code, title, tour_type, primary_destination_id, duration_days, overview,
+       base_price_adult, is_international, cost_remarks, hotel_remarks,
+       transport_remarks, emi_remarks, booking_poi_remarks, cancellation_remarks, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_code, 
         title, 
@@ -154,15 +156,16 @@ router.post('/', async (req, res) => {
         emi_remarks,
         booking_poi_remarks,
         cancellation_remarks,
+        status
       ]
     );
 
     res.status(201).json({ tour_id: result.insertId });
-
-  } catch (err) { 
-    res.status(500).json({ error: err.message }); 
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 // UPDATE
 router.put('/:id', async (req, res) => {
@@ -225,7 +228,23 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE
+router.put('/status/:tour_id', async (req, res) => {
+  const { tour_id } = req.params;
+  const { status } = req.body;
+
+  try {
+    await pool.query(
+      `UPDATE tours SET status = ? WHERE tour_id = ?`,
+      [status, tour_id]
+    );
+
+    res.json({ message: 'Status updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 // In each route file (departures.js, tour-costs.js, etc.)
 router.delete('/bulk/:tour_id', async (req, res) => {
   try {
