@@ -99,11 +99,13 @@ const tourHotelsRouter = require('./routes/tourHotels');
 
 const optionalToursRouter = require('./routes/optionaltours');
 const emiOptionsRouter = require('./routes/emioptions');
+const leadsRoutes = require('./routes/leads');
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
 const videosDir = path.join(uploadsDir, 'videos');
+const domesticToursRoutes = require('./routes/domesticTours');
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -120,6 +122,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 // Serve uploaded videos statically
 app.use('/video-uploads', express.static(uploadsDir));
 app.use('/video-uploads/videos', express.static(videosDir));
+app.use('/api/leads', leadsRoutes);
 
 // === VIDEO CAROUSEL ROUTE ===
 app.use('/api/videos', videoRoutes);
@@ -152,6 +155,7 @@ app.use('/api/tour-hotels', tourHotelsRouter);
 app.use("/api", cruiseRoutes);
 app.use("/api", cruiseAdvancedRoutes);
 app.use("/api", visaRoutes);
+app.use('/api/domestic-tours', domesticToursRoutes);
 
 // Simple test route
 app.get('/api/test', (req, res) => {
