@@ -137,6 +137,22 @@ router.post('/bulk', async (req, res) => {
   }
 });
 
+// DELETE ALL cancellation policies for a tour
+router.delete('/tour/:tour_id', async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM tour_cancellation_policies WHERE tour_id = ?',
+      [req.params.tour_id]
+    );
+    res.json({ 
+      success: true, 
+      message: `Deleted ${result.affectedRows} cancellation policies` 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 
 

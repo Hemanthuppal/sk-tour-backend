@@ -107,5 +107,21 @@ router.delete('/:cost_id', async (req, res) => {
   }
 });
 
+// DELETE ALL costs for a tour
+router.delete('/tour/:tour_id', async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM tour_costs WHERE tour_id = ?',
+      [req.params.tour_id]
+    );
+    res.json({ 
+      success: true, 
+      message: `Deleted ${result.affectedRows} cost rows` 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 module.exports = router;
