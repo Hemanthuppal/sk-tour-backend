@@ -262,4 +262,20 @@ router.delete('/tour/:tour_id', async (req, res) => {
   }
 });
 
+// DELETE ALL EMI options for a tour
+router.delete('/tour/:tour_id', async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      'DELETE FROM emi_options WHERE tour_id = ?',
+      [req.params.tour_id]
+    );
+    res.json({ 
+      success: true, 
+      message: `Deleted ${result.affectedRows} EMI options` 
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 module.exports = router;

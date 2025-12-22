@@ -100,6 +100,7 @@ const tourHotelsRouter = require('./routes/tourHotels');
 const optionalToursRouter = require('./routes/optionaltours');
 const emiOptionsRouter = require('./routes/emioptions');
 const leadsRoutes = require('./routes/leads');
+// const editTour = require('./routes/edittours');
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
@@ -129,6 +130,7 @@ app.use('/api/videos', videoRoutes);
 
 // === ALL EXISTING CRUD ROUTES ===
 app.use('/api/tours', require('./routes/tours'));
+// app.use('/api/edittours', require('./routes/edittours'));
 app.use('/api/categories', require('./routes/tourCategories'));
 app.use('/api/departures', require('./routes/tourDepartures'));
 app.use('/api/bookings', require('./routes/bookings'));
