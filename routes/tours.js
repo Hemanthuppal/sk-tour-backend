@@ -724,4 +724,111 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
   }
 });
 
+router.get('/tour/full/all-individual', async (req, res) => {
+  try {
+    // 1️⃣ Get ALL Individual tours
+    const [tours] = await pool.query(`
+      SELECT *
+      FROM tours
+      WHERE tour_type = 'Individual'
+    `);
+
+    if (tours.length === 0) {
+      return res.json({
+        success: true,
+        tour_type: 'Individual',
+        data: []
+      });
+    }
+
+    const result = [];
+
+    // 2️⃣ Loop each tour and get full details
+    for (const tour of tours) {
+      const tourId = tour.tour_id;
+
+      const [       
+        images,
+      ] = await Promise.all([
+  
+        pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId]),
+       
+      ]);
+
+      result.push({
+        basic_details: tour,
+      
+        images: images[0],
+       
+      });
+    }
+
+    res.json({
+      success: true,
+      tour_type: 'Individual',
+      total: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+
+router.get('/tour/full/all-group', async (req, res) => {
+  try {
+    // 1️⃣ Get ALL Group tours
+    const [tours] = await pool.query(`
+      SELECT *
+      FROM tours
+      WHERE tour_type = 'Group'
+    `);
+
+    if (tours.length === 0) {
+      return res.json({
+        success: true,
+        tour_type: 'Group',
+        data: []
+      });
+    }
+
+    const result = [];
+
+    // 2️⃣ Loop through each Group tour
+    for (const tour of tours) {
+      const tourId = tour.tour_id;
+
+      const [   
+        images,
+      ] = await Promise.all([
+    
+        pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
+
+      ]);
+
+      result.push({
+        basic_details: tour,
+        images: images[0],
+      });
+    }
+
+    res.json({
+      success: true,
+      tour_type: 'Group',
+      total: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 module.exports = router;
