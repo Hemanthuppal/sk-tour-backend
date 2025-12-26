@@ -124,6 +124,7 @@ router.post('/', async (req, res) => {
     duration_days, 
     overview, 
     base_price_adult, 
+     emi_price, // ← Add this
     is_international = 0,
     cost_remarks,
     hotel_remarks,
@@ -138,9 +139,9 @@ router.post('/', async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO tours 
       (tour_code, title, tour_type, primary_destination_id, duration_days, overview,
-       base_price_adult, is_international, cost_remarks, hotel_remarks,
+       base_price_adult,  emi_price, is_international, cost_remarks, hotel_remarks,
        transport_remarks, emi_remarks, booking_poi_remarks, cancellation_remarks, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
       [
         tour_code, 
         title, 
@@ -149,6 +150,7 @@ router.post('/', async (req, res) => {
         duration_days, 
         overview, 
         base_price_adult, 
+        emi_price, // ← Add this
         is_international,
         cost_remarks,
         hotel_remarks,
@@ -186,7 +188,7 @@ router.put('/:id', async (req, res) => {
     // List of allowed fields to update
     const allowedFields = [
       'title', 'tour_type', 'primary_destination_id', 'duration_days',
-      'overview', 'base_price_adult', 'is_international', 'cost_remarks',
+      'overview', 'base_price_adult','emi_price', 'is_international', 'cost_remarks',
       'hotel_remarks', 'transport_remarks', 'emi_remarks',
       'booking_poi_remarks', 'cancellation_remarks'
     ];
