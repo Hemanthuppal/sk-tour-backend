@@ -100,6 +100,7 @@ const tourHotelsRouter = require('./routes/tourHotels');
 const optionalToursRouter = require('./routes/optionaltours');
 const emiOptionsRouter = require('./routes/emioptions');
 const leadsRoutes = require('./routes/leads');
+const contactRoutes = require('./routes/contactroutes');
 // const editTour = require('./routes/edittours');
 
 // Create uploads directory if it doesn't exist
@@ -158,6 +159,9 @@ app.use("/api", cruiseRoutes);
 app.use("/api", cruiseAdvancedRoutes);
 app.use("/api", visaRoutes);
 app.use('/api/domestic-tours', domesticToursRoutes);
+
+
+app.use('/api/contact', contactRoutes);
 
 // Simple test route
 app.get('/api/test', (req, res) => {
