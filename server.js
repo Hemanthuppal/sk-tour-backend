@@ -101,6 +101,7 @@ const optionalToursRouter = require('./routes/optionaltours');
 const emiOptionsRouter = require('./routes/emioptions');
 const leadsRoutes = require('./routes/leads');
 const contactRoutes = require('./routes/contactroutes');
+const phoneRoutes = require("./routes/phonepe")
 // const editTour = require('./routes/edittours');
 
 // Create uploads directory if it doesn't exist
@@ -162,6 +163,7 @@ app.use('/api/domestic-tours', domesticToursRoutes);
 
 
 app.use('/api/contact', contactRoutes);
+app.use('/api', phoneRoutes);
 
 // Simple test route
 app.get('/api/test', (req, res) => {
