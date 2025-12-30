@@ -18,37 +18,41 @@ router.get('/', async (req, res) => {
 
 // GET next tour code - MODIFIED FOR BOTH INDIVIDUAL AND GROUP TOURS
 
+// routes/tours.js
+// GET next tour code - UPDATED FOR BOTH DOMESTIC AND INTERNATIONAL
 router.get('/next-tour-code', async (req, res) => {
   try {
-    // Get the tour_type from query parameters
-    const { tour_type } = req.query;
+    // Get the tour_type and is_international from query parameters
+    const { tour_type, is_international = '0' } = req.query;
     
     if (!tour_type) {
       return res.status(400).json({ error: 'tour_type query parameter is required' });
     }
     
-    // Determine prefix based on tour type (case-insensitive)
-    let prefix;
+    // Determine base prefix based on tour type (case-insensitive)
     const type = tour_type.toLowerCase();
+    let basePrefix;
     
     switch(type) {
       case 'individual':
-        prefix = 'DOMI';
+        basePrefix = 'I';
         break;
       case 'group':
-        prefix = 'DOMG';
+        basePrefix = 'G';
         break;
       case 'ladies':
-        prefix = 'DOML'; // Ladies tour code prefix
+      case 'ladiesspecial':
+        basePrefix = 'L';
         break;
       case 'senior':
-        prefix = 'DOMS'; // Senior tour code prefix
+      case 'seniorcitizen':
+        basePrefix = 'S';
         break;
       case 'student':
-        prefix = 'DOMT'; // Student tour code prefix (using T for STudent to avoid conflict)
+        basePrefix = 'T';
         break;
       case 'honeymoon':
-        prefix = 'DOMH'; // Honeymoon tour code prefix
+        basePrefix = 'H';
         break;
       default:
         return res.status(400).json({ 
@@ -56,7 +60,10 @@ router.get('/next-tour-code', async (req, res) => {
         });
     }
     
-    // Get the highest tour_code for this specific tour type
+    // Add DOM or INTL prefix based on is_international
+    const prefix = is_international === '1' ? `INTL${basePrefix}` : `DOM${basePrefix}`;
+    
+    // Get the highest tour_code for this specific prefix
     const [rows] = await pool.query(`
       SELECT tour_code 
       FROM tours 
@@ -74,18 +81,21 @@ router.get('/next-tour-code', async (req, res) => {
       nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1;
     }
     
-    // Format with leading zeros (5 digits total for 4 zeros after prefix)
+    // Format with leading zeros (3 digits total for 3 zeros after prefix)
     const nextCode = `${prefix}${nextNumber.toString().padStart(5, '0')}`;
     
     res.json({ 
       next_tour_code: nextCode,
       tour_type: tour_type,
-      prefix: prefix
+      prefix: prefix,
+      is_international: is_international
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 // GET single tour with full details
 router.get('/:id', async (req, res) => {
