@@ -17,20 +17,30 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET only domestic countries (usually just India)
-router.get('/domestic', async (req, res) => {
+// GET only international countries
+router.get('/international', async (req, res) => {
   try {
-    const [rows] = await pool.query(`SELECT * FROM countries WHERE is_domestic = 1`);
+    const [rows] = await pool.query(`
+      SELECT country_id, name, is_domestic 
+      FROM countries 
+      WHERE is_domestic = 0
+      ORDER BY name ASC
+    `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET only international countries
-router.get('/international', async (req, res) => {
+// GET only domestic countries (for separation)
+router.get('/domestic', async (req, res) => {
   try {
-    const [rows] = await pool.query(`SELECT * FROM countries WHERE is_domestic = 0 ORDER BY name`);
+    const [rows] = await pool.query(`
+      SELECT country_id, name, is_domestic 
+      FROM countries 
+      WHERE is_domestic = 1
+      ORDER BY name ASC
+    `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -114,5 +124,8 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
 
 module.exports = router;

@@ -35,15 +35,16 @@ router.get('/country/:country_id', async (req, res) => {
   }
 });
 
-// GET only domestic destinations (India)
-router.get('/domestic', async (req, res) => {
+// GET only international destinations
+router.get('/international', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT d.*, c.name AS country_name
+      SELECT d.destination_id, d.name, d.short_desc, d.created_at,
+             c.name AS country_name, c.country_id, c.is_domestic
       FROM destinations d
       JOIN countries c ON d.country_id = c.country_id
-      WHERE c.is_domestic = 1
-      ORDER BY d.name
+      WHERE c.is_domestic = 0
+      ORDER BY d.created_at DESC, c.name, d.name
     `);
     res.json(rows);
   } catch (err) {
@@ -51,21 +52,23 @@ router.get('/domestic', async (req, res) => {
   }
 });
 
-// GET only international destinations
-router.get('/international', async (req, res) => {
+// GET only domestic destinations
+router.get('/domestic', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT d.*, c.name AS country_name
+      SELECT d.destination_id, d.name, d.short_desc, d.created_at,
+             c.name AS country_name, c.country_id, c.is_domestic
       FROM destinations d
       JOIN countries c ON d.country_id = c.country_id
-      WHERE c.is_domestic = 0
-      ORDER BY c.name, d.name
+      WHERE c.is_domestic = 1
+      ORDER BY d.created_at DESC, c.name, d.name
     `);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // SEARCH destinations by name (partial match)
 router.get('/search/:query', async (req, res) => {
