@@ -142,6 +142,7 @@ router.post('/', async (req, res) => {
     emi_remarks,
     booking_poi_remarks,
     cancellation_remarks,
+     optional_tour_remarks, 
     status = 1
   } = req.body;
 
@@ -150,8 +151,8 @@ router.post('/', async (req, res) => {
       `INSERT INTO tours 
       (tour_code, title, tour_type, primary_destination_id, duration_days, overview,
        base_price_adult,  emi_price, is_international, cost_remarks, hotel_remarks,
-       transport_remarks, emi_remarks, booking_poi_remarks, cancellation_remarks, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
+       transport_remarks, emi_remarks, booking_poi_remarks, cancellation_remarks, optional_tour_remarks,status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)`,
       [
         tour_code, 
         title, 
@@ -168,6 +169,7 @@ router.post('/', async (req, res) => {
         emi_remarks,
         booking_poi_remarks,
         cancellation_remarks,
+        optional_tour_remarks,
         status
       ]
     );
@@ -200,7 +202,7 @@ router.put('/:id', async (req, res) => {
       'title', 'tour_type', 'primary_destination_id', 'duration_days',
       'overview', 'base_price_adult','emi_price', 'is_international', 'cost_remarks',
       'hotel_remarks', 'transport_remarks', 'emi_remarks',
-      'booking_poi_remarks', 'cancellation_remarks'
+      'booking_poi_remarks', 'cancellation_remarks', 'optional_tour_remarks'
     ];
 
     // Filter and prepare update data

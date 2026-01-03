@@ -77,17 +77,17 @@ router.post('/bulk', async (req, res) => {
     const values = hotels.map((h) => [
       tour_id,
       h.city || '',
-      h.hotel_name || '',
-      h.room_type || null,
+      // h.hotel_name || '',
+      // h.room_type || null,
       h.nights ? Number(h.nights) : null,
       h.remarks || null,
-      h.hotel_standard || null,
-      h.hotel_deluxe || null,
-      h.hotel_executive || null
+      h.standard_hotel_name || null,  // Add this
+      h.deluxe_hotel_name || null,    // Add this
+      h.executive_hotel_name || null   // Add this
     ]);
 
     await conn.query(
-      `INSERT INTO tour_hotels (tour_id, city, hotel_name, room_type, nights, remarks, hotel_standard, hotel_deluxe, hotel_executive)
+      `INSERT INTO tour_hotels (tour_id, city, nights, remarks, standard_hotel_name, deluxe_hotel_name, executive_hotel_name)
        VALUES ?`,
       [values]
     );
