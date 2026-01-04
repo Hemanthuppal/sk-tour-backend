@@ -103,6 +103,7 @@ const leadsRoutes = require('./routes/leads');
 const contactRoutes = require('./routes/contactroutes');
 const phoneRoutes = require("./routes/phonepe")
 // const editTour = require('./routes/edittours');
+const tourVisaRouter = require('./routes/visa');
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
@@ -160,6 +161,7 @@ app.use("/api", cruiseRoutes);
 app.use("/api", cruiseAdvancedRoutes);
 app.use("/api", visaRoutes);
 app.use('/api/domestic-tours', domesticToursRoutes);
+app.use('/api/visa', tourVisaRouter);
 
 
 app.use('/api/contact', contactRoutes);

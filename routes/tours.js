@@ -321,6 +321,15 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
+    // Load Visa Data
+      const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
+      const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
+      const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+
+      response.visa_details = visaDetails;
+      response.visa_fees = visaFees;
+      response.visa_submission = visaSubmission;
+
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
     response.booking_poi = poi;
@@ -394,6 +403,15 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
     // 8️⃣ HOTELS
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
+
+    // Load Visa Data
+    const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
+    const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
+    const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+
+    response.visa_details = visaDetails;
+    response.visa_fees = visaFees;
+    response.visa_submission = visaSubmission;
 
     // 9️⃣ TRANSPORT (INDIVIDUAL = description based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
@@ -477,6 +495,17 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
+
+    // Add this after loading other data in the group tour route:
+// Load Visa Data
+    const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
+    const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
+    const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+
+    response.visa_details = visaDetails;
+    response.visa_fees = visaFees;
+    response.visa_submission = visaSubmission;
+
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
     response.booking_poi = poi;
@@ -551,9 +580,20 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
 
+    // Load Visa Data
+    const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
+    const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
+    const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+
+    response.visa_details = visaDetails;
+    response.visa_fees = visaFees;
+    response.visa_submission = visaSubmission;
+
     // 9️⃣ TRANSPORT (GROUP = flight based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
+
+
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
@@ -628,6 +668,15 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
     // 8️⃣ HOTELS
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
+
+    // Load Visa Data
+    const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
+    const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
+    const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+
+    response.visa_details = visaDetails;
+    response.visa_fees = visaFees;
+    response.visa_submission = visaSubmission;
 
     // 9️⃣ TRANSPORT (GROUP = flight based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
@@ -706,6 +755,15 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
     // 8️⃣ HOTELS
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
+
+    // Load Visa Data
+    const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
+    const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
+    const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+
+    response.visa_details = visaDetails;
+    response.visa_fees = visaFees;
+    response.visa_submission = visaSubmission;
 
     // 9️⃣ TRANSPORT (GROUP = flight based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
