@@ -321,14 +321,33 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
-    // Load Visa Data
-      const [visaDetails] = await pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ?', [tourId]);
-      const [visaFees] = await pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]);
-      const [visaSubmission] = await pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]);
+    // ========================
+    // VISA DATA - FIXED SECTION
+    // ========================
+    const [
+      visaDetails,
+      visaForms,  // ADD THIS
+      visaFees,
+      visaSubmission
+    ] = await Promise.all([
+      pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+    ]);
 
-      response.visa_details = visaDetails;
-      response.visa_fees = visaFees;
-      response.visa_submission = visaSubmission;
+    response.visa_details = visaDetails[0];
+    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_fees = visaFees[0];
+    response.visa_submission = visaSubmission[0];
+
+    // If you want to include file URLs, process visa forms:
+    const processedVisaForms = visaForms[0].map(form => ({
+      ...form,
+      action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
+      action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
+    }));
+    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
@@ -350,12 +369,18 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
     response.emi_options = emi;
 
-    res.json({ success: true, tour_type: 'Individual', tour_id: tourId, ...response });
+    res.json({ 
+      success: true, 
+      tour_type: 'Individual', 
+      tour_id: tourId, 
+      ...response 
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
   const tourId = req.params.tour_id;
