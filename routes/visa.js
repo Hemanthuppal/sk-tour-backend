@@ -4,27 +4,68 @@ const pool = require('../config/db');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs'); // Add this import
+const mime = require('mime-types');
 
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
+
+// Configure multer for visa form file uploads
+const visaStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const uploadDir = path.join(__dirname, '../temp_uploads');
+    const uploadDir = path.join(__dirname, '../public/uploads/visa');
+    
+    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    const tourId = req.params.tour_id || 'temp';
+    const visaType = req.body.visa_type || 'unknown';
+    const actionType = req.body.action_type || 'action';
+    
+    // Clean up names for filename safety
+    const cleanVisaType = visaType.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    const cleanActionType = actionType.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+    
+    // Get file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    // Generate filename
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 8);
+    const fileName = `visa-${tourId}-${cleanVisaType}-${cleanActionType}-${timestamp}-${randomStr}${ext}`;
+    
+    cb(null, fileName);
   }
 });
 
-const upload = multer({ 
-  storage: storage,
+
+// File filter to accept only PDF and Word documents
+const visaFileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ];
+  
+  const allowedExtensions = ['.pdf', '.doc', '.docx'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  
+  if (allowedTypes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only PDF and Word documents are allowed'), false);
+  }
+};
+
+
+const uploadVisaFile = multer({ 
+  storage: visaStorage,
+  fileFilter: visaFileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB limit
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 1
   }
 });
 
@@ -56,6 +97,27 @@ router.post('/bulk', async (req, res) => {
     submission_count: submission.length,
     tourist_visa_remarks_length: tourist_visa_remarks?.length || 0
   });
+
+ // In your backend code, update the extractFilename function:
+const extractFilename = (filePath) => {
+  if (!filePath || filePath === '' || filePath === 'null' || filePath === 'undefined') {
+    return null;
+  }
+  
+  // If it's not a string, return null
+  if (typeof filePath !== 'string') {
+    return null;
+  }
+  
+  // If it's already just a filename (no slashes), return as is
+  if (!filePath.includes('/') && !filePath.includes('\\')) {
+    return filePath;
+  }
+  
+  // Extract filename from path (handles both Unix and Windows paths)
+  const fileName = filePath.split(/[\\/]/).pop();
+  return fileName || null;
+};
 
   try {
     // Start a transaction
@@ -133,39 +195,32 @@ router.post('/bulk', async (req, res) => {
       }
     ];
 
-    const formsToInsert = visa_forms.length > 0 ? visa_forms : defaultForms;
+    // Use provided forms or default forms
+const formsToInsert = visa_forms && visa_forms.length > 0 ? visa_forms : defaultForms;
     
     console.log('📄 Forms to insert:', formsToInsert.length);
 
     for (const form of formsToInsert) {
-      // Handle file fields properly
-      let action1File = form.action1_file;
-      let action2File = form.action2_file;
+      // Extract filenames from file paths
+      const action1File = extractFilename(form.action1_file);
+      const action2File = extractFilename(form.action2_file);
       
-      // Check if it's a string (already uploaded) or File object (needs upload)
-      if (action1File && typeof action1File === 'object' && action1File.name) {
-        // This is a File object - we'll handle it separately
-        action1File = null; // Don't save file object directly
-      } else if (!action1File || action1File === '' || action1File === 'null') {
-        action1File = null;
-      }
+      // Debug log
+      console.log(`📄 Inserting form: ${form.visa_type || form.type}`, {
+        originalAction1: form.action1_file,
+        cleanedAction1: action1File,
+        originalAction2: form.action2_file,
+        cleanedAction2: action2File
+      });
       
-      if (action2File && typeof action2File === 'object' && action2File.name) {
-        // This is a File object
-        action2File = null;
-      } else if (!action2File || action2File === '' || action2File === 'null') {
-        action2File = null;
-      }
-      
-      console.log(`📄 Inserting form: ${form.type}`);
       
       // Insert the form data
       await pool.query(
         'INSERT INTO tour_visa_forms (tour_id, visa_type, download_text, download_action, fill_action, action1_file, action2_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
           tour_id,
-          form.type || 'Tourist Visa',
-          form.download_text || 'Tourist Visa Form Download',
+            form.visa_type || form.type || 'Tourist Visa',
+            form.download_text || `${form.type || 'Tourist Visa'} Form Download`,
           form.download_action || 'Download',
           form.fill_action || 'Fill Manually',
           action1File,
@@ -252,75 +307,62 @@ router.post('/bulk', async (req, res) => {
 });
 
 // ============================================
-// UPLOAD VISA FORM FILE (FIXED)
+// UPLOAD VISA FORM FILE (FIXED VERSION)
 // ============================================
-// routes/visa.js - Fix the /upload-file/:tour_id route
-router.post('/upload-file/:tour_id', upload.single('file'), async (req, res) => {
+router.post('/upload-file/:tour_id', uploadVisaFile.single('file'), async (req, res) => {
   try {
     const tourId = req.params.tour_id;
     
-    // Debug log
-    console.log('📤 Visa file upload request received:', {
+    console.log('📤 Visa file upload request:', {
       tourId,
-      body: req.body,
+      visa_type: req.body.visa_type,
+      action_type: req.body.action_type,
       file: req.file ? req.file.originalname : 'No file'
     });
 
-    // Check if file exists
     if (!req.file) {
       return res.status(400).json({ 
         success: false, 
-        error: 'No file uploaded' 
+        error: 'No file uploaded or invalid file type' 
       });
     }
 
-    // Get visa_type from body - handle both form-data and JSON
     const { visa_type, action_type } = req.body;
     
     if (!visa_type) {
+      // Clean up the uploaded file if validation fails
+      if (req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
       return res.status(400).json({ 
         success: false, 
-        error: 'visa_type is required in request body' 
+        error: 'visa_type is required' 
       });
     }
 
-    // Generate unique filename
-    const originalName = req.file.originalname;
-    const fileExt = path.extname(originalName);
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    const fileName = `visa-${tourId}-${visa_type.replace(/\s+/g, '-')}-${action_type}-${uniqueSuffix}${fileExt}`;
+    // Get the generated filename
+    const fileName = req.file.filename;
     
-    // Define upload path
-    const uploadDir = path.join(__dirname, '../public/uploads/visa');
-    
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-
-    const filePath = path.join(uploadDir, fileName);
-
-    // Move file to destination
-    fs.renameSync(req.file.path, filePath);
-
-    console.log('✅ Visa file uploaded successfully:', {
-      fileName,
-      filePath,
-      visa_type,
-      action_type
-    });
-
+    // Return success response with file info
     res.json({
       success: true,
       fileName: fileName,
-      filePath: `/uploads/visa/${fileName}`,
+      originalName: req.file.originalname,
+      fileUrl: `/uploads/visa/${fileName}`,
       visa_type: visa_type,
-      action_type: action_type,
+      action_type: action_type || 'unknown',
+      size: req.file.size,
       message: 'File uploaded successfully'
     });
 
   } catch (err) {
     console.error('❌ Visa file upload error:', err);
+    
+    // Clean up file if error occurred
+    if (req.file && req.file.path) {
+      fs.unlinkSync(req.file.path);
+    }
+    
     res.status(500).json({ 
       success: false, 
       error: err.message,
@@ -331,56 +373,110 @@ router.post('/upload-file/:tour_id', upload.single('file'), async (req, res) => 
 
 
 // ============================================
-// GET VISA FORM FILE
+// SERVE VISA FORM FILE (FIXED VERSION)
 // ============================================
 router.get('/file/:filename', async (req, res) => {
-  const filename = req.params.filename;
-  const filePath = path.join(__dirname, '../uploads/visa', filename);
-  
-  console.log('📥 Requesting file:', filename);
+  try {
+    const filename = req.params.filename;
+    
+    // Prevent directory traversal attacks
+    const safeFilename = path.basename(filename);
+    
+    const filePath = path.join(__dirname, '../public/uploads/visa', safeFilename);
+    
+    console.log('📥 Serving visa file:', safeFilename);
 
-  if (fs.existsSync(filePath)) {
-    res.download(filePath);
-  } else {
-    res.status(404).json({
+    if (!fs.existsSync(filePath)) {
+      console.error('❌ File not found:', filePath);
+      return res.status(404).json({
+        success: false,
+        message: 'File not found'
+      });
+    }
+
+    // Determine content type
+    const ext = path.extname(filename).toLowerCase();
+    let contentType;
+    
+    if (ext === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (ext === '.doc') {
+      contentType = 'application/msword';
+    } else if (ext === '.docx') {
+      contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    } else {
+      contentType = mime.lookup(ext) || 'application/octet-stream';
+    }
+
+    // Set headers
+    res.setHeader('Content-Type', contentType);
+    
+    // For PDFs, open in browser; for Word docs, download
+    if (ext === '.pdf') {
+      res.setHeader('Content-Disposition', `inline; filename="${safeFilename}"`);
+    } else {
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    }
+    
+    // Send file
+    res.sendFile(filePath);
+    
+  } catch (err) {
+    console.error('❌ Error serving file:', err);
+    res.status(500).json({
       success: false,
-      message: 'File not found'
+      error: err.message
     });
   }
 });
 
-// ============================================
-// DELETE ALL VISA DATA FOR A TOUR
-// ============================================
-router.delete('/tour/:tour_id', async (req, res) => {
-  const tourId = req.params.tour_id;
 
+
+// ============================================
+// DELETE VISA FORM FILE
+// ============================================
+router.delete('/file/:filename', async (req, res) => {
   try {
-    await pool.query('START TRANSACTION');
+    const filename = req.params.filename;
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(__dirname, '../public/uploads/visa', safeFilename);
 
-    await pool.query('DELETE FROM tour_visa_details WHERE tour_id = ?', [tourId]);
-    await pool.query('DELETE FROM tour_visa_forms WHERE tour_id = ?', [tourId]);
-    await pool.query('DELETE FROM tour_visa_fees WHERE tour_id = ?', [tourId]);
-    await pool.query('DELETE FROM tour_visa_submission WHERE tour_id = ?', [tourId]);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({
+        success: false,
+        message: 'File not found'
+      });
+    }
 
-    await pool.query('COMMIT');
+    // Delete file from filesystem
+    fs.unlinkSync(filePath);
+    
+    // Remove reference from database
+    await pool.query(
+      'UPDATE tour_visa_forms SET action1_file = NULL WHERE action1_file = ?',
+      [safeFilename]
+    );
+    
+    await pool.query(
+      'UPDATE tour_visa_forms SET action2_file = NULL WHERE action2_file = ?',
+      [safeFilename]
+    );
 
     res.json({
       success: true,
-      message: 'Visa data deleted successfully',
-      tour_id: tourId
+      message: 'File deleted successfully'
     });
 
   } catch (err) {
-    await pool.query('ROLLBACK');
-    console.error('Error deleting visa data:', err);
+    console.error('❌ Error deleting file:', err);
     res.status(500).json({
       success: false,
-      error: err.message,
-      details: 'Failed to delete visa data'
+      error: err.message
     });
   }
 });
+
+
 
 // ============================================
 // GET ALL VISA DATA FOR A TOUR
