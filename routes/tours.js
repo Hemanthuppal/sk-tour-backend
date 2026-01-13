@@ -918,12 +918,21 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
 
 router.get('/tour/full/all-individual', async (req, res) => {
   try {
-    // 1️⃣ Get ALL Individual tours
-    const [tours] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_type = 'Individual'
-    `);
+    // Get query parameter for international filter (true/false/undefined for all)
+    const isInternational = req.query.is_international;
+    
+    // Build base query
+    let query = `SELECT * FROM tours WHERE tour_type = 'Individual'`;
+    let params = [];
+    
+    // Add filter if provided
+    if (isInternational !== undefined) {
+      query += ` AND is_international = ?`;
+      params.push(isInternational === 'true' ? 1 : 0);
+    }
+
+    // 1️⃣ Get Individual tours with optional filter
+    const [tours] = await pool.query(query, params);
 
     if (tours.length === 0) {
       return res.json({
@@ -942,22 +951,19 @@ router.get('/tour/full/all-individual', async (req, res) => {
       const [       
         images,
       ] = await Promise.all([
-  
         pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId]),
-       
       ]);
 
       result.push({
         basic_details: tour,
-      
         images: images[0],
-       
       });
     }
 
     res.json({
       success: true,
       tour_type: 'Individual',
+      is_international: isInternational,
       total: result.length,
       data: result
     });
@@ -973,17 +979,27 @@ router.get('/tour/full/all-individual', async (req, res) => {
 
 router.get('/tour/full/all-group', async (req, res) => {
   try {
-    // 1️⃣ Get ALL Group tours
-    const [tours] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_type = 'Group'
-    `);
+    // Get query parameter for international filter
+    const isInternational = req.query.is_international;
+    
+    // Build base query
+    let query = `SELECT * FROM tours WHERE tour_type = 'Group'`;
+    let params = [];
+    
+    // Add filter if provided
+    if (isInternational !== undefined) {
+      query += ` AND is_international = ?`;
+      params.push(isInternational === 'true' ? 1 : 0);
+    }
+
+    // 1️⃣ Get Group tours with optional filter
+    const [tours] = await pool.query(query, params);
 
     if (tours.length === 0) {
       return res.json({
         success: true,
         tour_type: 'Group',
+        is_international: isInternational,
         data: []
       });
     }
@@ -997,9 +1013,7 @@ router.get('/tour/full/all-group', async (req, res) => {
       const [   
         images,
       ] = await Promise.all([
-    
         pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
-
       ]);
 
       result.push({
@@ -1011,6 +1025,7 @@ router.get('/tour/full/all-group', async (req, res) => {
     res.json({
       success: true,
       tour_type: 'Group',
+      is_international: isInternational,
       total: result.length,
       data: result
     });
