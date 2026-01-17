@@ -61,7 +61,7 @@ router.get('/next-tour-code', async (req, res) => {
     }
     
     // Add DOM or INTL prefix based on is_international
-    const prefix = is_international === '1' ? `INTL${basePrefix}` : `DOM${basePrefix}`;
+    const prefix = is_international === '1' ? `INT${basePrefix}` : `DOM${basePrefix}`;
     
     // Get the highest tour_code for this specific prefix
     const [rows] = await pool.query(`
