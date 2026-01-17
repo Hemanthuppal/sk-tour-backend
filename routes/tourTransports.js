@@ -36,37 +36,41 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const {
     tour_id,
-    mode,
-    from_city,
-    to_city,
-    carrier,
-    number_code,
-    departure_datetime,
-    arrival_datetime,
     description,
+    airline,
+    flight_no,
+    from_city,
+    from_date,
+    from_time,
+    to_city,
+    to_date,
+    to_time,
+    via,
     sort_order
   } = req.body;
 
-  if (!tour_id || !mode || !from_city || !to_city) {
-    return res.status(400).json({ message: 'tour_id, mode, from_city and to_city are required' });
+  if (!tour_id || !from_city || !to_city) {
+    return res.status(400).json({ message: 'tour_id, from_city and to_city are required' });
   }
 
   try {
     const [result] = await pool.query(
       `INSERT INTO tour_transports
-        (tour_id, mode, from_city, to_city, carrier, number_code, 
-         departure_datetime, arrival_datetime, description, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (tour_id, description, airline, flight_no, from_city, from_date, from_time,
+         to_city, to_date, to_time, via, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_id,
-        mode,
-        from_city,
-        to_city,
-        carrier || null,
-        number_code || null,
-        departure_datetime || null,
-        arrival_datetime || null,
         description || null,
+        airline || null,
+        flight_no || null,
+        from_city || null,
+        from_date || null,
+        from_time || null,
+        to_city || null,
+        to_date || null,
+        to_time || null,
+        via || null,
         sort_order || 1
       ]
     );
@@ -113,18 +117,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// DELETE ALL segments of a tour
-router.delete('/tour/:tour_id', async (req, res) => {
-  try {
-    await pool.query(`DELETE FROM tour_transports WHERE tour_id = ?`, [
-      req.params.tour_id
-    ]);
-    res.json({ message: 'All transport details removed for this tour' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
+// BULK CREATE transport segments
 router.post('/bulk', async (req, res) => {
   const { tour_id, items } = req.body;
 
@@ -136,6 +129,10 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
+    // First, delete existing transport for this tour
+    await conn.query(`DELETE FROM tour_transports WHERE tour_id = ?`, [tour_id]);
+
+    // Prepare values for insertion
     const values = items.map((t, i) => [
       tour_id,
       t.description || null,
@@ -148,44 +145,56 @@ router.post('/bulk', async (req, res) => {
       t.to_date || null,
       t.to_time || null,
       t.via || null,
-      i + 1
+      t.sort_order || i + 1
     ]);
 
-    await conn.query(
-      `INSERT INTO tour_transports
-      (tour_id, description, airline, flight_no, from_city, from_date, from_time,
-       to_city, to_date, to_time, via, sort_order)
-       VALUES ?`,
-      [values]
-    );
+    // Insert new transport items
+    if (values.length > 0) {
+      await conn.query(
+        `INSERT INTO tour_transports
+        (tour_id, description, airline, flight_no, from_city, from_date, from_time,
+         to_city, to_date, to_time, via, sort_order)
+         VALUES ?`,
+        [values]
+      );
+    }
 
     await conn.commit();
-    res.status(201).json({ message: 'Transport saved', count: items.length });
+    res.status(201).json({ 
+      success: true,
+      message: 'Transport saved successfully', 
+      count: items.length 
+    });
   } catch (err) {
     await conn.rollback();
-    res.status(500).json({ error: err.message });
+    console.error('Error saving bulk transport:', err);
+    res.status(500).json({ 
+      success: false,
+      error: err.message 
+    });
   } finally {
     conn.release();
   }
 });
 
-
-// DELETE ALL transports for a tour
+// DELETE ALL segments of a tour
 router.delete('/tour/:tour_id', async (req, res) => {
   try {
     const [result] = await pool.query(
-      'DELETE FROM tour_transports WHERE tour_id = ?',
+      `DELETE FROM tour_transports WHERE tour_id = ?`, 
       [req.params.tour_id]
     );
+    
     res.json({ 
       success: true, 
-      message: `Deleted ${result.affectedRows} transport rows` 
+      message: `Deleted ${result.affectedRows} transport rows for tour ${req.params.tour_id}` 
     });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ 
+      success: false, 
+      error: err.message 
+    });
   }
 });
-
-
 
 module.exports = router;
