@@ -70,157 +70,161 @@ const uploadVisaFile = multer({
 });
 
 
+
+
+
+
+// ============================================
+// BULK SAVE ALL VISA DATA FOR A TOUR
+// ============================================
 // ============================================
 // BULK SAVE ALL VISA DATA FOR A TOUR
 // ============================================
 router.post('/bulk', async (req, res) => {
-  const { 
-    tour_id, 
-    tourist_visa = [], 
-    transit_visa = [], 
-    business_visa = [], 
-    photo = [], 
-    visa_forms = [],
-    visa_fees = [],
-    submission = [],
-    tourist_visa_remarks = ''
-  } = req.body;
-
-  console.log('📥 Received visa bulk data:', {
-    tour_id,
-    tourist_visa_count: tourist_visa.length,
-    transit_visa_count: transit_visa.length,
-    business_visa_count: business_visa.length,
-    photo_count: photo.length,
-    visa_forms_count: visa_forms.length,
-    visa_fees_count: visa_fees.length,
-    submission_count: submission.length,
-    tourist_visa_remarks_length: tourist_visa_remarks?.length || 0
-  });
-
- // In your backend code, update the extractFilename function:
-const extractFilename = (filePath) => {
-  if (!filePath || filePath === '' || filePath === 'null' || filePath === 'undefined') {
-    return null;
-  }
-  
-  // If it's not a string, return null
-  if (typeof filePath !== 'string') {
-    return null;
-  }
-  
-  // If it's already just a filename (no slashes), return as is
-  if (!filePath.includes('/') && !filePath.includes('\\')) {
-    return filePath;
-  }
-  
-  // Extract filename from path (handles both Unix and Windows paths)
-  const fileName = filePath.split(/[\\/]/).pop();
-  return fileName || null;
-};
-
   try {
+    const { 
+      tour_id, 
+      tourist_visa = [], 
+      transit_visa = [], 
+      business_visa = [], 
+      photo = [], 
+      visa_forms = [],
+      visa_fees = [],
+      submission = [],
+      tourist_visa_remarks = ''
+    } = req.body;
+
+    console.log('📥 Received visa bulk data:', {
+      tour_id,
+      tourist_visa_count: tourist_visa.length,
+      transit_visa_count: transit_visa.length,
+      business_visa_count: business_visa.length,
+      photo_count: photo.length,
+      visa_forms_count: visa_forms.length,
+      visa_fees_count: visa_fees.length,
+      submission_count: submission.length,
+      tourist_visa_remarks_length: tourist_visa_remarks?.length || 0
+    });
+
+    // Validate tour_id
+    if (!tour_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'tour_id is required'
+      });
+    }
+
     // Start a transaction
     await pool.query('START TRANSACTION');
 
     // 1️⃣ Delete existing visa data for this tour
-    await pool.query('DELETE FROM tour_visa_details WHERE tour_id = ?', [tour_id]);
-    await pool.query('DELETE FROM tour_visa_forms WHERE tour_id = ?', [tour_id]);
-    await pool.query('DELETE FROM tour_visa_fees WHERE tour_id = ?', [tour_id]);
+    console.log('🗑️ Deleting existing visa data for tour:', tour_id);
+    
+    // Execute deletes in sequence to avoid foreign key constraints
     await pool.query('DELETE FROM tour_visa_submission WHERE tour_id = ?', [tour_id]);
+    await pool.query('DELETE FROM tour_visa_fees WHERE tour_id = ?', [tour_id]);
+    await pool.query('DELETE FROM tour_visa_forms WHERE tour_id = ?', [tour_id]);
+    await pool.query('DELETE FROM tour_visa_details WHERE tour_id = ?', [tour_id]);
 
     console.log('✅ Deleted existing visa data');
 
     // 2️⃣ Insert tourist visa items
-    for (const item of tourist_visa) {
-      if (item.description && item.description.trim()) {
-        await pool.query(
-          'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
-          [tour_id, 'tourist', item.description.trim()]
-        );
+    if (tourist_visa && Array.isArray(tourist_visa)) {
+      for (const item of tourist_visa) {
+        if (item && item.description && item.description.trim()) {
+          await pool.query(
+            'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
+            [tour_id, 'tourist', item.description.trim()]
+          );
+        }
       }
     }
 
     // 3️⃣ Insert transit visa items
-    for (const item of transit_visa) {
-      if (item.description && item.description.trim()) {
-        await pool.query(
-          'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
-          [tour_id, 'transit', item.description.trim()]
-        );
+    if (transit_visa && Array.isArray(transit_visa)) {
+      for (const item of transit_visa) {
+        if (item && item.description && item.description.trim()) {
+          await pool.query(
+            'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
+            [tour_id, 'transit', item.description.trim()]
+          );
+        }
       }
     }
 
     // 4️⃣ Insert business visa items
-    for (const item of business_visa) {
-      if (item.description && item.description.trim()) {
-        await pool.query(
-          'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
-          [tour_id, 'business', item.description.trim()]
-        );
+    if (business_visa && Array.isArray(business_visa)) {
+      for (const item of business_visa) {
+        if (item && item.description && item.description.trim()) {
+          await pool.query(
+            'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
+            [tour_id, 'business', item.description.trim()]
+          );
+        }
       }
     }
 
     // 5️⃣ Insert photo items
-    for (const item of photo) {
-      if (item.description && item.description.trim()) {
-        await pool.query(
-          'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
-          [tour_id, 'photo', item.description.trim()]
-        );
+    if (photo && Array.isArray(photo)) {
+      for (const item of photo) {
+        if (item && item.description && item.description.trim()) {
+          await pool.query(
+            'INSERT INTO tour_visa_details (tour_id, type, description) VALUES (?, ?, ?)',
+            [tour_id, 'photo', item.description.trim()]
+          );
+        }
       }
     }
 
     console.log('✅ Inserted visa details');
 
-    // 6️⃣ Insert visa forms with remarks
+    // 6️⃣ Insert visa forms with remarks - FIXED VERSION
     const defaultForms = [
       {
-        type: 'Tourist Visa',
-        download_text: 'Tourist Visa Form Download',
+        visa_type: 'Tourist Visa',
         download_action: 'Download',
         fill_action: 'Fill Manually'
       },
       {
-        type: 'Transit Visa',
-        download_text: 'Transit Visa Form Download',
+        visa_type: 'Transit Visa',
         download_action: 'Download',
         fill_action: 'Fill Manually'
       },
       {
-        type: 'Business Visa',
-        download_text: 'Business Visa Form Download',
+        visa_type: 'Business Visa',
         download_action: 'Download',
         fill_action: 'Fill Manually'
       }
     ];
 
     // Use provided forms or default forms
-const formsToInsert = visa_forms && visa_forms.length > 0 ? visa_forms : defaultForms;
+    const formsToInsert = (visa_forms && visa_forms.length > 0) ? visa_forms : defaultForms;
     
     console.log('📄 Forms to insert:', formsToInsert.length);
 
     for (const form of formsToInsert) {
       // Extract filenames from file paths
-      const action1File = extractFilename(form.action1_file);
-      const action2File = extractFilename(form.action2_file);
+      const action1File = form.action1_file ? extractFilename(form.action1_file) : null;
+      const action2File = form.action2_file ? extractFilename(form.action2_file) : null;
       
-      // Debug log
-      console.log(`📄 Inserting form: ${form.visa_type || form.type}`, {
-        originalAction1: form.action1_file,
-        cleanedAction1: action1File,
-        originalAction2: form.action2_file,
-        cleanedAction2: action2File
+      // Get visa_type - use whichever field exists
+      const visaType = form.visa_type || form.type || 'Tourist Visa';
+      
+      console.log(`📄 Inserting form: ${visaType}`, {
+        visaType: visaType,
+        download_action: form.download_action || 'Download',
+        fill_action: form.fill_action || 'Fill Manually',
+        action1File: action1File,
+        action2File: action2File,
+        remarks: tourist_visa_remarks || ''
       });
       
-      
-      // Insert the form data
+      // Fixed INSERT query - removed download_text
       await pool.query(
-        'INSERT INTO tour_visa_forms (tour_id, visa_type, download_text, download_action, fill_action, action1_file, action2_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO tour_visa_forms (tour_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [
           tour_id,
-            form.visa_type || form.type || 'Tourist Visa',
-            form.download_text || `${form.type || 'Tourist Visa'} Form Download`,
+          visaType,
           form.download_action || 'Download',
           form.fill_action || 'Fill Manually',
           action1File,
@@ -233,41 +237,50 @@ const formsToInsert = visa_forms && visa_forms.length > 0 ? visa_forms : default
     console.log('✅ Inserted visa forms');
 
     // 7️⃣ Insert visa fees
-    for (let i = 0; i < visa_fees.length; i++) {
-      const fee = visa_fees[i];
-      
-      await pool.query(
-        'INSERT INTO tour_visa_fees (tour_id, row_type, tourist, transit, business, tourist_charges, transit_charges, business_charges, row_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [
-          tour_id,
-          fee.type || '',
-          fee.tourist || '',
-          fee.transit || '',
-          fee.business || '',
-          fee.tourist_charges || '',
-          fee.transit_charges || '',
-          fee.business_charges || '',
-          i
-        ]
-      );
+    if (visa_fees && Array.isArray(visa_fees)) {
+      for (let i = 0; i < visa_fees.length; i++) {
+        const fee = visa_fees[i];
+        
+        if (fee) {
+          await pool.query(
+            'INSERT INTO tour_visa_fees (tour_id, row_type, tourist, transit, business, tourist_charges, transit_charges, business_charges, row_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+              tour_id,
+              fee.type || fee.row_type || '',
+              fee.tourist || '',
+              fee.transit || '',
+              fee.business || '',
+              fee.tourist_charges || '',
+              fee.transit_charges || '',
+              fee.business_charges || '',
+              i
+            ]
+          );
+        }
+      }
     }
 
     console.log('✅ Inserted visa fees');
 
     // 8️⃣ Insert submission data
-    for (let i = 0; i < submission.length; i++) {
-      const item = submission[i];
-      await pool.query(
-        'INSERT INTO tour_visa_submission (tour_id, label, tourist, transit, business, row_order) VALUES (?, ?, ?, ?, ?, ?)',
-        [
-          tour_id,
-          item.label || '',
-          item.tourist || '',
-          item.transit || '',
-          item.business || '',
-          i
-        ]
-      );
+    if (submission && Array.isArray(submission)) {
+      for (let i = 0; i < submission.length; i++) {
+        const item = submission[i];
+        
+        if (item) {
+          await pool.query(
+            'INSERT INTO tour_visa_submission (tour_id, label, tourist, transit, business, row_order) VALUES (?, ?, ?, ?, ?, ?)',
+            [
+              tour_id,
+              item.label || '',
+              item.tourist || '',
+              item.transit || '',
+              item.business || '',
+              i
+            ]
+          );
+        }
+      }
     }
 
     console.log('✅ Inserted submission data');
@@ -282,29 +295,63 @@ const formsToInsert = visa_forms && visa_forms.length > 0 ? visa_forms : default
       message: 'Visa data saved successfully',
       tour_id: tour_id,
       counts: {
-        tourist_visa: tourist_visa.length,
-        transit_visa: transit_visa.length,
-        business_visa: business_visa.length,
-        photo: photo.length,
+        tourist_visa: tourist_visa?.length || 0,
+        transit_visa: transit_visa?.length || 0,
+        business_visa: business_visa?.length || 0,
+        photo: photo?.length || 0,
         visa_forms: formsToInsert.length,
-        visa_fees: visa_fees.length,
-        submission: submission.length
+        visa_fees: visa_fees?.length || 0,
+        submission: submission?.length || 0
       }
     });
 
   } catch (err) {
     // Rollback on error
-    await pool.query('ROLLBACK');
+    try {
+      await pool.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('❌ Rollback failed:', rollbackErr.message);
+    }
+    
     console.error('❌ Error saving visa data:', err.message);
     console.error('❌ Stack trace:', err.stack);
+    console.error('❌ Error code:', err.code);
+    console.error('❌ SQL State:', err.sqlState);
+    
     res.status(500).json({
       success: false,
-      error: err.message,
-      details: 'Failed to save visa data',
-      stack: err.stack
+      error: 'Failed to save visa data',
+      message: err.message,
+      code: err.code,
+      sqlState: err.sqlState
     });
   }
 });
+
+// Helper function to extract filename from path
+const extractFilename = (filePath) => {
+  if (!filePath) return null;
+  
+  // If it's already just a filename
+  if (typeof filePath === 'string') {
+    // Check if it's a full path
+    const parts = filePath.split('/');
+    const lastPart = parts[parts.length - 1];
+    
+    // Check if it's a URL or just a filename
+    if (lastPart.includes('.') || lastPart.trim() === '') {
+      return lastPart;
+    }
+    return filePath;
+  }
+  
+  // If it's a File object
+  if (filePath && typeof filePath === 'object' && filePath.name) {
+    return filePath.name;
+  }
+  
+  return null;
+};
 
 // ============================================
 // UPLOAD VISA FORM FILE (FIXED VERSION)
@@ -637,7 +684,6 @@ router.get('/full/:tour_id', async (req, res) => {
     // Process visa forms
     const processedVisaForms = visaForms[0].map(form => ({
       type: form.visa_type,
-      download_text: form.download_text,
       download_action: form.download_action,
       fill_action: form.fill_action,
       action1_file: form.action1_file,

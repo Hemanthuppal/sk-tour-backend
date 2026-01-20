@@ -166,6 +166,9 @@ app.use('/api/visa', tourVisaRouter);
 
 app.use('/api/contact', contactRoutes);
 app.use('/api', phoneRoutes);
+app.use("/api", require("./routes/tourEnquiry"));
+
+
 
 // Simple test route
 app.get('/api/test', (req, res) => {
