@@ -105,6 +105,9 @@ const phoneRoutes = require("./routes/phonepe")
 // const editTour = require('./routes/edittours');
 const tourVisaRouter = require('./routes/visa');
 
+// Add this with your other route imports
+const checkoutRoutes = require('./routes/checkout');
+
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -168,6 +171,8 @@ app.use('/api/contact', contactRoutes);
 app.use('/api', phoneRoutes);
 app.use("/api", require("./routes/tourEnquiry"));
 
+// Add this with your other route uses
+app.use('/api', checkoutRoutes);
 
 
 // Simple test route
