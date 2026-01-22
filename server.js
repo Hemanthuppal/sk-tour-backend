@@ -108,6 +108,12 @@ const tourVisaRouter = require('./routes/visa');
 // Add this with your other route imports
 const checkoutRoutes = require('./routes/checkout');
 
+// server.js or app.js
+const paymentRoutes = require('./routes/payments');
+
+const enquiryRoutes = require('./routes/tourEnquiry');
+
+
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -169,7 +175,9 @@ app.use('/api/visa', tourVisaRouter);
 
 app.use('/api/contact', contactRoutes);
 app.use('/api', phoneRoutes);
-app.use("/api", require("./routes/tourEnquiry"));
+app.use("/api", enquiryRoutes);
+// Add this with your other routes
+app.use('/api', paymentRoutes);
 
 // Add this with your other route uses
 app.use('/api', checkoutRoutes);
