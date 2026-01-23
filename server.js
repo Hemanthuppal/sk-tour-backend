@@ -105,9 +105,7 @@ const contactRoutes = require('./routes/contactroutes');
 const phoneRoutes = require("./routes/phonepe")
 // const editTour = require('./routes/edittours');
 const tourVisaRouter = require('./routes/visa');
-<<<<<<< HEAD
 const emailRoutes = require('./routes/Email/Email');
-=======
 
 // Add this with your other route imports
 const checkoutRoutes = require('./routes/checkout');
@@ -126,7 +124,6 @@ const carouselImagesRoutes = require('./routes/carouselimages');
 app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carousel')));
 
 
->>>>>>> 0ce1856d97e12d4eb176b166ff2548e1fef0a4c2
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
