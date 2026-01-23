@@ -105,7 +105,28 @@ const contactRoutes = require('./routes/contactroutes');
 const phoneRoutes = require("./routes/phonepe")
 // const editTour = require('./routes/edittours');
 const tourVisaRouter = require('./routes/visa');
+<<<<<<< HEAD
 const emailRoutes = require('./routes/Email/Email');
+=======
+
+// Add this with your other route imports
+const checkoutRoutes = require('./routes/checkout');
+
+// server.js or app.js
+const paymentRoutes = require('./routes/payments');
+
+const enquiryRoutes = require('./routes/tourEnquiry');
+
+
+// Add this with other route imports
+const carouselImagesRoutes = require('./routes/carouselimages');
+
+
+// Update the static middleware to serve carousel images
+app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carousel')));
+
+
+>>>>>>> 0ce1856d97e12d4eb176b166ff2548e1fef0a4c2
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -128,6 +149,9 @@ app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 app.use('/video-uploads', express.static(uploadsDir));
 app.use('/video-uploads/videos', express.static(videosDir));
 app.use('/api/leads', leadsRoutes);
+
+// Add this with other app.use() statements
+app.use('/api/carousel-images', carouselImagesRoutes);
 
 // === VIDEO CAROUSEL ROUTE ===
 app.use('/api/videos', videoRoutes);
@@ -167,8 +191,12 @@ app.use('/api', emailRoutes);
 
 app.use('/api/contact', contactRoutes);
 app.use('/api', phoneRoutes);
-app.use("/api", require("./routes/tourEnquiry"));
+app.use("/api", enquiryRoutes);
+// Add this with your other routes
+app.use('/api', paymentRoutes);
 
+// Add this with your other route uses
+app.use('/api', checkoutRoutes);
 
 
 // Simple test route
