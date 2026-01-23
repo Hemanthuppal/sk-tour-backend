@@ -76,15 +76,16 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const path = require('path');
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage() });
+
+
 
 // === VIDEO CAROUSEL SETUP ===
 const videoRoutes = require('./routes/videoRoutes');
-
 // === EXISTING ROUTES ===
 const cruiseRoutes = require("./routes/CrusieBookingRoute/CruiseBooking");
 const cruiseAdvancedRoutes = require("./routes/CruiseBookingAdvancedRoute/CruiseBookingAdvanced");
@@ -104,7 +105,7 @@ const contactRoutes = require('./routes/contactroutes');
 const phoneRoutes = require("./routes/phonepe")
 // const editTour = require('./routes/edittours');
 const tourVisaRouter = require('./routes/visa');
-
+const emailRoutes = require('./routes/Email/Email');
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -162,7 +163,7 @@ app.use("/api", cruiseAdvancedRoutes);
 app.use("/api", visaRoutes);
 app.use('/api/domestic-tours', domesticToursRoutes);
 app.use('/api/visa', tourVisaRouter);
-
+app.use('/api', emailRoutes);
 
 app.use('/api/contact', contactRoutes);
 app.use('/api', phoneRoutes);
