@@ -113,7 +113,7 @@ router.put("/checkout/:id/payment", async (req, res) => {
                  phonepe_transaction_id = ?, 
                  payment_status = ?,
                  updated_at = CURRENT_TIMESTAMP
-             WHERE checkout_id = ?`,
+             WHERE id = ?`,
             [
                 phonepe_order_id,
                 phonepe_transaction_id || null,
@@ -211,7 +211,7 @@ router.put("/checkout/:id/payment", async (req, res) => {
                  phonepe_transaction_id = ?, 
                  payment_status = ?,
                  updated_at = CURRENT_TIMESTAMP
-             WHERE checkout_id = ?`,
+             WHERE id = ?`,
             [
                 phonepe_order_id,
                 phonepe_transaction_id || null,
@@ -267,7 +267,7 @@ router.put("/checkout/:id/status", async (req, res) => {
             `UPDATE checkouts 
              SET payment_status = ?,
                  updated_at = CURRENT_TIMESTAMP
-             WHERE checkout_id = ?`,
+             WHERE id = ?`,
             [payment_status, checkoutId]
         );
 
