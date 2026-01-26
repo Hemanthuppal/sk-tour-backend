@@ -80,14 +80,6 @@ const uploadVisaFile = multer({
 // ============================================
 // BULK SAVE ALL VISA DATA FOR A TOUR
 // ============================================
-// In visa.js - Update the bulk endpoint to accept all remarks
-// ============================================
-// BULK SAVE ALL VISA DATA FOR A TOUR (FIXED)
-// ============================================
-// ============================================
-// BULK SAVE ALL VISA DATA FOR A TOUR (FIXED - Store ALL remarks in EACH form)
-// ============================================
-// In visa.js - Update the bulk endpoint
 router.post('/bulk', async (req, res) => {
   try {
     const { 
@@ -99,15 +91,20 @@ router.post('/bulk', async (req, res) => {
       visa_forms = [],
       visa_fees = [],
       submission = [],
-      // All remarks from frontend
-      tourist_visa_remarks = '',
-      transit_visa_remarks = '',
-      business_visa_remarks = '',
-      visa_form_remarks = '',
-      photo_remarks = '',
-      visa_fees_remarks = '',
-      submission_pickup_remarks = ''
+      tourist_visa_remarks = ''
     } = req.body;
+
+    console.log('📥 Received visa bulk data:', {
+      tour_id,
+      tourist_visa_count: tourist_visa.length,
+      transit_visa_count: transit_visa.length,
+      business_visa_count: business_visa.length,
+      photo_count: photo.length,
+      visa_forms_count: visa_forms.length,
+      visa_fees_count: visa_fees.length,
+      submission_count: submission.length,
+      tourist_visa_remarks_length: tourist_visa_remarks?.length || 0
+    });
 
     // Validate tour_id
     if (!tour_id) {
@@ -123,11 +120,11 @@ router.post('/bulk', async (req, res) => {
     // 1️⃣ Delete existing visa data for this tour
     console.log('🗑️ Deleting existing visa data for tour:', tour_id);
     
+    // Execute deletes in sequence to avoid foreign key constraints
     await pool.query('DELETE FROM tour_visa_submission WHERE tour_id = ?', [tour_id]);
     await pool.query('DELETE FROM tour_visa_fees WHERE tour_id = ?', [tour_id]);
     await pool.query('DELETE FROM tour_visa_forms WHERE tour_id = ?', [tour_id]);
     await pool.query('DELETE FROM tour_visa_details WHERE tour_id = ?', [tour_id]);
-    await pool.query('DELETE FROM tour_visa_remarks WHERE tour_id = ?', [tour_id]); // NEW: Delete remarks
 
     console.log('✅ Deleted existing visa data');
 
@@ -181,7 +178,7 @@ router.post('/bulk', async (req, res) => {
 
     console.log('✅ Inserted visa details');
 
-    // 6️⃣ Insert visa forms WITHOUT remarks
+    // 6️⃣ Insert visa forms with remarks - FIXED VERSION
     const defaultForms = [
       {
         visa_type: 'Tourist Visa',
@@ -213,11 +210,18 @@ router.post('/bulk', async (req, res) => {
       // Get visa_type - use whichever field exists
       const visaType = form.visa_type || form.type || 'Tourist Visa';
       
-      // Store ONLY form data, NO remarks in visa_forms table
+      console.log(`📄 Inserting form: ${visaType}`, {
+        visaType: visaType,
+        download_action: form.download_action || 'Download',
+        fill_action: form.fill_action || 'Fill Manually',
+        action1File: action1File,
+        action2File: action2File,
+        remarks: tourist_visa_remarks || ''
+      });
+      
+      // Fixed INSERT query - removed download_text
       await pool.query(
-        `INSERT INTO tour_visa_forms 
-        (tour_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        'INSERT INTO tour_visa_forms (tour_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)',
         [
           tour_id,
           visaType,
@@ -225,36 +229,14 @@ router.post('/bulk', async (req, res) => {
           form.fill_action || 'Fill Manually',
           action1File,
           action2File,
-          visa_form_remarks || '' // Only general visa form remarks in the remarks column
+          tourist_visa_remarks || ''
         ]
       );
     }
 
-    console.log('✅ Inserted visa forms WITHOUT remarks');
+    console.log('✅ Inserted visa forms');
 
-    // 7️⃣ Insert visa remarks into SEPARATE table
-    const remarksToInsert = [
-      { type: 'tourist_visa', remarks: tourist_visa_remarks },
-      { type: 'transit_visa', remarks: transit_visa_remarks },
-      { type: 'business_visa', remarks: business_visa_remarks },
-      { type: 'visa_form', remarks: visa_form_remarks },
-      { type: 'photo', remarks: photo_remarks },
-      { type: 'visa_fees', remarks: visa_fees_remarks },
-      { type: 'submission_pickup', remarks: submission_pickup_remarks }
-    ];
-
-    for (const remark of remarksToInsert) {
-      if (remark.remarks && remark.remarks.trim()) {
-        await pool.query(
-          'INSERT INTO tour_visa_remarks (tour_id, remark_type, remarks) VALUES (?, ?, ?)',
-          [tour_id, remark.type, remark.remarks.trim()]
-        );
-      }
-    }
-
-    console.log('✅ Inserted visa remarks into separate table');
-
-    // 8️⃣ Insert visa fees
+    // 7️⃣ Insert visa fees
     if (visa_fees && Array.isArray(visa_fees)) {
       for (let i = 0; i < visa_fees.length; i++) {
         const fee = visa_fees[i];
@@ -280,7 +262,7 @@ router.post('/bulk', async (req, res) => {
 
     console.log('✅ Inserted visa fees');
 
-    // 9️⃣ Insert submission data
+    // 8️⃣ Insert submission data
     if (submission && Array.isArray(submission)) {
       for (let i = 0; i < submission.length; i++) {
         const item = submission[i];
@@ -319,8 +301,7 @@ router.post('/bulk', async (req, res) => {
         photo: photo?.length || 0,
         visa_forms: formsToInsert.length,
         visa_fees: visa_fees?.length || 0,
-        submission: submission?.length || 0,
-        remarks: remarksToInsert.filter(r => r.remarks && r.remarks.trim()).length
+        submission: submission?.length || 0
       }
     });
 
@@ -334,6 +315,8 @@ router.post('/bulk', async (req, res) => {
     
     console.error('❌ Error saving visa data:', err.message);
     console.error('❌ Stack trace:', err.stack);
+    console.error('❌ Error code:', err.code);
+    console.error('❌ SQL State:', err.sqlState);
     
     res.status(500).json({
       success: false,
@@ -341,64 +324,6 @@ router.post('/bulk', async (req, res) => {
       message: err.message,
       code: err.code,
       sqlState: err.sqlState
-    });
-  }
-});
-
-// Update the GET full endpoint
-router.get('/full/:tour_id', async (req, res) => {
-  const tourId = req.params.tour_id;
-
-  try {
-    const [
-      visaDetails,
-      visaForms,
-      visaFees,
-      visaSubmission,
-      visaRemarks // NEW: Get visa remarks
-    ] = await Promise.all([
-      pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId]) // NEW
-    ]);
-
-    // Process visa forms (NO remarks from this table)
-    const processedVisaForms = visaForms[0].map(form => ({
-      ...form,
-      action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
-      action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
-    }));
-
-    // Convert remarks array to object for easy access
-    const remarksObj = {};
-    visaRemarks[0].forEach(remark => {
-      remarksObj[remark.remark_type] = remark.remarks || '';
-    });
-
-    res.json({
-      success: true,
-      visa_details: visaDetails[0],
-      visa_forms: processedVisaForms,
-      visa_fees: visaFees[0],
-      visa_submission: visaSubmission[0],
-      visa_remarks: remarksObj, // Return remarks separately
-      // Also return individual fields for backward compatibility
-      tourist_visa_remarks: remarksObj.tourist_visa || '',
-      transit_visa_remarks: remarksObj.transit_visa || '',
-      business_visa_remarks: remarksObj.business_visa || '',
-      visa_form_remarks: remarksObj.visa_form || '',
-      photo_remarks: remarksObj.photo || '',
-      visa_fees_remarks: remarksObj.visa_fees || '',
-      submission_pickup_remarks: remarksObj.submission_pickup || ''
-    });
-
-  } catch (err) {
-    console.error('Error fetching full visa data:', err);
-    res.status(500).json({
-      success: false,
-      error: err.message
     });
   }
 });
@@ -702,10 +627,6 @@ router.get('/check-international/:tour_id', async (req, res) => {
 // ============================================
 // GET VISA DATA FOR FULL TOUR LOAD
 // ============================================
-// In visa.js - Update the full endpoint
-// ============================================
-// GET VISA DATA FOR FULL TOUR LOAD (FIXED)
-// ============================================
 router.get('/full/:tour_id', async (req, res) => {
   const tourId = req.params.tour_id;
 
@@ -769,25 +690,8 @@ router.get('/full/:tour_id', async (req, res) => {
       action2_file: form.action2_file,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null,
-      remarks: form.remarks || '',
-      tourist_remarks: form.tourist_remarks || '',
-      transit_remarks: form.transit_remarks || '',
-      business_remarks: form.business_remarks || '',
-      visa_form_remarks: form.visa_form_remarks || '',
-      photo_remarks: form.photo_remarks || '',
-      visa_fees_remarks: form.visa_fees_remarks || '',
-      submission_pickup_remarks: form.submission_pickup_remarks || ''
+      remarks: form.remarks || ''
     }));
-
-    // Get remarks from the first form (which should have all remarks)
-    const firstForm = visaForms[0][0] || {};
-    
-    // Debug: Log what we're getting from the first form
-    console.log('📋 First form remarks:', {
-      tourist_remarks: firstForm.tourist_remarks?.substring(0, 50) + '...',
-      transit_remarks: firstForm.transit_remarks?.substring(0, 50) + '...',
-      business_remarks: firstForm.business_remarks?.substring(0, 50) + '...'
-    });
 
     res.json({
       success: true,
@@ -799,14 +703,7 @@ router.get('/full/:tour_id', async (req, res) => {
       transit_visa: transitVisaItems,
       business_visa: businessVisaItems,
       photo: photoItems,
-      // Return all remarks from the first form (which has all remarks)
-      tourist_visa_remarks: firstForm.tourist_remarks || '',
-      transit_visa_remarks: firstForm.transit_remarks || '',
-      business_visa_remarks: firstForm.business_remarks || '',
-      visa_form_remarks: firstForm.visa_form_remarks || '',
-      photo_remarks: firstForm.photo_remarks || '',
-      visa_fees_remarks: firstForm.visa_fees_remarks || '',
-      submission_pickup_remarks: firstForm.submission_pickup_remarks || ''
+      tourist_visa_remarks: visaForms[0][0]?.remarks || ''
     });
 
   } catch (err) {
