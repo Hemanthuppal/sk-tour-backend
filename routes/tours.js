@@ -322,32 +322,42 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     response.transport = transport;
 
     // ========================
-    // VISA DATA - FIXED SECTION
+    // VISA DATA - CLEAN SECTION
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
-      visaSubmission
+      visaSubmission,
+      visaRemarks
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
-    response.visa_fees = visaFees[0];
-    response.visa_submission = visaSubmission[0];
-
-    // If you want to include file URLs, process visa forms:
-    const processedVisaForms = visaForms[0].map(form => ({
+    
+    // Process visa forms with file URLs
+    response.visa_forms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+    
+    response.visa_fees = visaFees[0];
+    response.visa_submission = visaSubmission[0];
+
+    // Create a single visa_remarks object (don't return the array)
+    const visaRemarksObj = {};
+    visaRemarks[0].forEach(remark => {
+      visaRemarksObj[remark.remark_type] = remark.remarks || '';
+    });
+    
+    // Return ONLY this single object, not multiple formats
+    response.visa_remarks = visaRemarksObj;
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
@@ -380,7 +390,6 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 
 router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
   const tourId = req.params.tour_id;
@@ -436,12 +445,14 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
       visaDetails,
       visaForms,  // ADD THIS
       visaFees,
-      visaSubmission
+      visaSubmission,
+      visaRemarks  // ADD THIS
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
@@ -456,6 +467,15 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
     response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+
+        // Create a single visa_remarks object (don't return the array)
+    const visaRemarksObj = {};
+    visaRemarks[0].forEach(remark => {
+      visaRemarksObj[remark.remark_type] = remark.remarks || '';
+    });
+    
+    // Return ONLY this single object, not multiple formats
+    response.visa_remarks = visaRemarksObj;
 
     // 9️⃣ TRANSPORT (INDIVIDUAL = description based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
@@ -546,12 +566,14 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
       visaDetails,
       visaForms,  // ADD THIS
       visaFees,
-      visaSubmission
+      visaSubmission,
+       visaRemarks  // ADD THIS
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
+        pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId])  // ADD THIS
     ]);
 
     response.visa_details = visaDetails[0];
@@ -566,6 +588,15 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
     response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+
+    // Create a single visa_remarks object
+const visaRemarksObj = {};
+visaRemarks[0].forEach(remark => {
+  visaRemarksObj[remark.remark_type] = remark.remarks || '';
+});
+
+// Add this to response
+response.visa_remarks = visaRemarksObj;
 
 
     // 🔟 BOOKING POI
@@ -649,12 +680,14 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
       visaDetails,
       visaForms,  // ADD THIS
       visaFees,
-      visaSubmission
+      visaSubmission,
+        visaRemarks  // ADD THIS
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
+        pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId])  // ADD THIS
     ]);
 
     response.visa_details = visaDetails[0];
@@ -670,6 +703,15 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
     }));
     response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
 
+
+    // Create a single visa_remarks object
+const visaRemarksObj = {};
+visaRemarks[0].forEach(remark => {
+  visaRemarksObj[remark.remark_type] = remark.remarks || '';
+});
+
+// Add this to response
+response.visa_remarks = visaRemarksObj;
 
 
     // 9️⃣ TRANSPORT (GROUP = flight based)
@@ -759,12 +801,14 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
       visaDetails,
       visaForms,  // ADD THIS
       visaFees,
-      visaSubmission
+      visaSubmission,
+      visaRemarks  // ADD THIS
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId])  // ADD THIS
     ]);
 
     response.visa_details = visaDetails[0];
@@ -779,6 +823,15 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
     response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+
+    // Create a single visa_remarks object
+const visaRemarksObj = {};
+visaRemarks[0].forEach(remark => {
+  visaRemarksObj[remark.remark_type] = remark.remarks || '';
+});
+
+// Add this to response
+response.visa_remarks = visaRemarksObj;
 
     // 9️⃣ TRANSPORT (GROUP = flight based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
@@ -864,12 +917,14 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
       visaDetails,
       visaForms,  // ADD THIS
       visaFees,
-      visaSubmission
+      visaSubmission,
+        visaRemarks  // ADD THIS
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
-      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_remarks WHERE tour_id = ?', [tourId])  // ADD THIS
     ]);
 
     response.visa_details = visaDetails[0];
@@ -884,6 +939,15 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
     response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+
+    // Create a single visa_remarks object
+const visaRemarksObj = {};
+visaRemarks[0].forEach(remark => {
+  visaRemarksObj[remark.remark_type] = remark.remarks || '';
+});
+
+// Add this to response
+response.visa_remarks = visaRemarksObj;
 
     // 9️⃣ TRANSPORT (GROUP = flight based)
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
