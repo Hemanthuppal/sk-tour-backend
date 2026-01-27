@@ -81,6 +81,9 @@ const uploadVisaFile = multer({
 // BULK SAVE ALL VISA DATA FOR A TOUR
 // ============================================
 router.post('/bulk', async (req, res) => {
+  console.log('================ VISA BULK API HIT ================');
+    console.log('🧾 RAW BODY:', JSON.stringify(req.body, null, 2));
+    console.log('===================================================');
   try {
     const { 
       tour_id, 
