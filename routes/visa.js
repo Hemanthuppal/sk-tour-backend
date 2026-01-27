@@ -703,4 +703,48 @@ router.get('/full/:tour_id', async (req, res) => {
   }
 });
 
+
+// ============================================
+// DELETE ALL VISA DATA FOR A TOUR
+// ============================================
+router.delete('/tour/:tour_id', async (req, res) => {
+  const tourId = req.params.tour_id;
+
+  try {
+    console.log(`🗑️ Deleting all visa data for tour: ${tourId}`);
+    
+    // Start transaction
+    await pool.query('START TRANSACTION');
+
+    // Delete in correct order (considering foreign keys if any)
+    const deleteQueries = [
+      'DELETE FROM tour_visa_submission WHERE tour_id = ?',
+      'DELETE FROM tour_visa_fees WHERE tour_id = ?',
+      'DELETE FROM tour_visa_forms WHERE tour_id = ?',
+      'DELETE FROM tour_visa_details WHERE tour_id = ?'
+    ];
+
+    for (const query of deleteQueries) {
+      await pool.query(query, [tourId]);
+    }
+
+    await pool.query('COMMIT');
+
+    res.json({
+      success: true,
+      message: 'All visa data deleted successfully',
+      tour_id: tourId
+    });
+
+  } catch (err) {
+    await pool.query('ROLLBACK');
+    console.error('❌ Error deleting visa data:', err);
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      message: 'Failed to delete visa data'
+    });
+  }
+});
+
 module.exports = router;
