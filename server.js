@@ -147,7 +147,7 @@ app.use('/video-uploads', express.static(uploadsDir));
 app.use('/video-uploads/videos', express.static(videosDir));
 app.use('/api/leads', leadsRoutes);
 
-// Add this with other app.use() statements
+
 app.use('/api/carousel-images', carouselImagesRoutes);
 
 // === VIDEO CAROUSEL ROUTE ===

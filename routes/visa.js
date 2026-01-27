@@ -80,10 +80,14 @@ const uploadVisaFile = multer({
 // ============================================
 // BULK SAVE ALL VISA DATA FOR A TOUR
 // ============================================
+// ============================================
+// BULK SAVE ALL VISA DATA FOR A TOUR
+// ============================================
 router.post('/bulk', async (req, res) => {
   console.log('================ VISA BULK API HIT ================');
-    console.log('🧾 RAW BODY:', JSON.stringify(req.body, null, 2));
-    console.log('===================================================');
+  console.log('🧾 RAW BODY:', JSON.stringify(req.body, null, 2));
+  console.log('===================================================');
+  
   try {
     const { 
       tour_id, 
@@ -123,7 +127,7 @@ router.post('/bulk', async (req, res) => {
     // 1️⃣ Delete existing visa data for this tour
     console.log('🗑️ Deleting existing visa data for tour:', tour_id);
     
-    // Execute deletes in sequence to avoid foreign key constraints
+    // Execute deletes in sequence
     await pool.query('DELETE FROM tour_visa_submission WHERE tour_id = ?', [tour_id]);
     await pool.query('DELETE FROM tour_visa_fees WHERE tour_id = ?', [tour_id]);
     await pool.query('DELETE FROM tour_visa_forms WHERE tour_id = ?', [tour_id]);
@@ -181,55 +185,36 @@ router.post('/bulk', async (req, res) => {
 
     console.log('✅ Inserted visa details');
 
-    // 6️⃣ Insert visa forms with remarks - FIXED VERSION
-    const defaultForms = [
-      {
-        visa_type: 'Tourist Visa',
-        download_action: 'Download',
-        fill_action: 'Fill Manually'
-      },
-      {
-        visa_type: 'Transit Visa',
-        download_action: 'Download',
-        fill_action: 'Fill Manually'
-      },
-      {
-        visa_type: 'Business Visa',
-        download_action: 'Download',
-        fill_action: 'Fill Manually'
-      }
-    ];
-
-    // Use provided forms or default forms
-    const formsToInsert = (visa_forms && visa_forms.length > 0) ? visa_forms : defaultForms;
+    // 6️⃣ Insert visa forms - SUPPORT DYNAMIC TYPES
+    console.log('📄 Forms to insert:', visa_forms.length);
     
-    console.log('📄 Forms to insert:', formsToInsert.length);
-
-    for (const form of formsToInsert) {
+    for (const form of visa_forms) {
       // Extract filenames from file paths
       const action1File = form.action1_file ? extractFilename(form.action1_file) : null;
       const action2File = form.action2_file ? extractFilename(form.action2_file) : null;
       
       // Get visa_type - use whichever field exists
       const visaType = form.visa_type || form.type || 'Tourist Visa';
+      const downloadAction = form.download_action || 'Download';
+      const fillAction = form.fill_action || 'Fill Manually';
       
       console.log(`📄 Inserting form: ${visaType}`, {
         visaType: visaType,
-        download_action: form.download_action || 'Download',
-        fill_action: form.fill_action || 'Fill Manually',
+        download_action: downloadAction,
+        fill_action: fillAction,
         action1File: action1File,
         action2File: action2File,
         remarks: tourist_visa_remarks || ''
       });
       
-      // Fixed INSERT query - removed download_text
+      // Fixed INSERT query - removed download_text column
       await pool.query(
-        'INSERT INTO tour_visa_forms (tour_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO tour_visa_forms (tour_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks) VALUES (?, ?,?, ?, ?, ?, ?)',
         [
           tour_id,
           visaType,
-          form.download_action || 'Download',
-          form.fill_action || 'Fill Manually',
+          downloadAction,
+          fillAction,
           action1File,
           action2File,
           tourist_visa_remarks || ''
@@ -302,7 +287,7 @@ router.post('/bulk', async (req, res) => {
         transit_visa: transit_visa?.length || 0,
         business_visa: business_visa?.length || 0,
         photo: photo?.length || 0,
-        visa_forms: formsToInsert.length,
+        visa_forms: visa_forms?.length || 0,
         visa_fees: visa_fees?.length || 0,
         submission: submission?.length || 0
       }
