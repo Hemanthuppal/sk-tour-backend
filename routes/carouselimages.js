@@ -9,21 +9,18 @@ const pool = require('../config/db');
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.join(__dirname, '../uploads/carousel');
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
     cb(null, uploadPath);
   },
   filename: function (req, file, cb) {
-    // Create unique filename
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     cb(null, 'carousel-' + uniqueSuffix + ext);
   }
 });
 
-// File filter for images only
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -40,15 +37,13 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 5 * 1024 * 1024
   }
 });
 
-// Upload new carousel image
+// Upload new carousel image (removed title, description fields)
 router.post('/upload', upload.single('image'), async (req, res) => {
   try {
-    const { title, description, display_order = 0, is_active = true } = req.body;
-    
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -56,19 +51,18 @@ router.post('/upload', upload.single('image'), async (req, res) => {
       });
     }
     
-    if (!title) {
-      return res.status(400).json({
-        success: false,
-        message: 'Title is required'
-      });
-    }
-    
     const image_url = `/uploads/carousel/${req.file.filename}`;
     
+    // Get current max display_order to add new image at the end
+    const [maxOrderResult] = await pool.query(
+      'SELECT MAX(display_order) as max_order FROM carousel_images'
+    );
+    const nextOrder = (maxOrderResult[0].max_order || 0) + 1;
+    
     const [result] = await pool.query(
-      `INSERT INTO carousel_images (image_url, title, description, display_order, is_active)
-       VALUES (?, ?, ?, ?, ?)`,
-      [image_url, title, description, display_order, is_active]
+      `INSERT INTO carousel_images (image_url, display_order, is_active)
+       VALUES (?, ?, ?)`,
+      [image_url, nextOrder, true] // Default to active
     );
     
     const [newImage] = await pool.query(
@@ -96,7 +90,7 @@ router.post('/upload', upload.single('image'), async (req, res) => {
 router.get('/admin', async (req, res) => {
   try {
     const [images] = await pool.query(
-      'SELECT * FROM carousel_images ORDER BY display_order, created_at DESC'
+      'SELECT id, image_url, display_order, is_active, created_at, updated_at FROM carousel_images ORDER BY display_order ASC'
     );
     
     res.json({
@@ -118,7 +112,7 @@ router.get('/admin', async (req, res) => {
 router.get('/active', async (req, res) => {
   try {
     const [images] = await pool.query(
-      'SELECT * FROM carousel_images WHERE is_active = TRUE ORDER BY display_order, created_at DESC'
+      'SELECT id, image_url, display_order FROM carousel_images WHERE is_active = TRUE ORDER BY display_order ASC'
     );
     
     res.json({
@@ -136,39 +130,23 @@ router.get('/active', async (req, res) => {
   }
 });
 
-// Update carousel image
+// Update carousel image - only is_active
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, display_order, is_active } = req.body;
+    const { is_active } = req.body;
     
-    const updateData = {};
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (display_order !== undefined) updateData.display_order = display_order;
-    if (is_active !== undefined) updateData.is_active = is_active;
-    
-    if (Object.keys(updateData).length === 0) {
+    if (is_active === undefined) {
       return res.status(400).json({
         success: false,
-        message: 'No data to update'
+        message: 'is_active field is required'
       });
     }
     
-    // Build dynamic update query
-    const updateFields = [];
-    const updateValues = [];
-    
-    Object.keys(updateData).forEach(key => {
-      updateFields.push(`${key} = ?`);
-      updateValues.push(updateData[key]);
-    });
-    
-    updateValues.push(id);
-    
-    const query = `UPDATE carousel_images SET ${updateFields.join(', ')} WHERE id = ?`;
-    
-    const [result] = await pool.query(query, updateValues);
+    const [result] = await pool.query(
+      'UPDATE carousel_images SET is_active = ? WHERE id = ?',
+      [is_active, id]
+    );
     
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -184,7 +162,7 @@ router.put('/:id', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Image updated successfully',
+      message: 'Image status updated successfully',
       data: updatedImage[0]
     });
     
@@ -228,6 +206,19 @@ router.delete('/:id', async (req, res) => {
       [id]
     );
     
+    // Reorder remaining images
+    const [remainingImages] = await pool.query(
+      'SELECT id FROM carousel_images ORDER BY display_order ASC'
+    );
+    
+    // Update display_order for remaining images
+    for (let i = 0; i < remainingImages.length; i++) {
+      await pool.query(
+        'UPDATE carousel_images SET display_order = ? WHERE id = ?',
+        [i, remainingImages[i].id]
+      );
+    }
+    
     res.json({
       success: true,
       message: 'Image deleted successfully'
@@ -246,7 +237,7 @@ router.delete('/:id', async (req, res) => {
 // Update image order (bulk update)
 router.put('/update-order', async (req, res) => {
   try {
-    const { images } = req.body; // Array of {id, display_order}
+    const { images } = req.body;
     
     if (!Array.isArray(images) || images.length === 0) {
       return res.status(400).json({
@@ -255,7 +246,6 @@ router.put('/update-order', async (req, res) => {
       });
     }
     
-    // Start transaction
     await pool.query('START TRANSACTION');
     
     try {
