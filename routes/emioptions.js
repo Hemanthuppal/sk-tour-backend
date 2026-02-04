@@ -67,17 +67,31 @@ router.post('/', async (req, res) => {
   }
 });
 
-// POST bulk create EMI options
-// POST bulk create EMI options (with individual loan amounts)
+// Add this calculation function at the top of the file
+const calculateEMI = (loanAmount, months, interestRate = 10) => {
+  // EMI formula: P * r * (1+r)^n / ((1+r)^n - 1)
+  // Where P = principal, r = monthly interest rate, n = number of months
+  const principal = parseFloat(loanAmount);
+  const monthlyRate = (interestRate / 100) / 12;
+  const n = parseInt(months, 10);
+  
+  if (principal <= 0 || n <= 0) return 0;
+  
+  const emi = principal * monthlyRate * Math.pow(1 + monthlyRate, n) / 
+              (Math.pow(1 + monthlyRate, n) - 1);
+  
+  return Math.round(emi * 100) / 100; // Round to 2 decimal places
+};
+
+// Update the bulk create route to calculate EMI automatically
 router.post('/emi/bulk', async (req, res) => {
   try {
-    const { tour_id, emi_options } = req.body;
+    const { tour_id, emi_options, loan_amount: fixedLoanAmount } = req.body;
     
     console.log('=== EMI BULK INSERT REQUEST ===');
     console.log('Tour ID:', tour_id);
+    console.log('Fixed Loan Amount:', fixedLoanAmount);
     console.log('EMI Options:', JSON.stringify(emi_options, null, 2));
-    console.log('EMI Options type:', typeof emi_options);
-    console.log('Is Array:', Array.isArray(emi_options));
     console.log('============================');
     
     if (!tour_id) {
@@ -87,57 +101,73 @@ router.post('/emi/bulk', async (req, res) => {
       });
     }
     
-    if (!Array.isArray(emi_options)) {
-      console.error('emi_options is not an array:', emi_options);
+    if (!fixedLoanAmount && (!Array.isArray(emi_options) || emi_options.length === 0)) {
+      console.error('Missing loan amount and no EMI options provided');
       return res.status(400).json({ 
-        error: 'emi_options must be an array' 
+        error: 'Loan amount is required' 
       });
     }
     
-    if (emi_options.length === 0) {
-      console.log('Empty emi_options array, skipping insert');
-      return res.status(200).json({
-        message: 'No EMI options to insert',
-        affectedRows: 0
+    let optionsToInsert = [];
+    
+    // If fixed loan amount is provided, generate EMI options
+    if (fixedLoanAmount) {
+      const loanAmount = parseFloat(fixedLoanAmount);
+      if (isNaN(loanAmount) || loanAmount <= 0) {
+        return res.status(400).json({ 
+          error: 'Valid loan amount is required' 
+        });
+      }
+      
+      // Generate EMI options for standard months
+      const standardMonths = [6, 12, 18, 24, 30, 36, 48];
+      optionsToInsert = standardMonths.map(months => ({
+        particulars: 'Per Month Payment',
+        months: months,
+        loan_amount: loanAmount,
+        emi: calculateEMI(loanAmount, months)
+      }));
+    } else if (Array.isArray(emi_options) && emi_options.length > 0) {
+      // Use provided options (for backward compatibility)
+      optionsToInsert = emi_options;
+    } else {
+      return res.status(400).json({ 
+        error: 'Either loan amount or emi_options array is required' 
       });
     }
     
-    // Validate each option with more detailed logging
-    for (let i = 0; i < emi_options.length; i++) {
-      const option = emi_options[i];
-      console.log(`Validating option ${i + 1}:`, option);
+    console.log('Options to insert:', JSON.stringify(optionsToInsert, null, 2));
+    
+    // Validate each option
+    for (let i = 0; i < optionsToInsert.length; i++) {
+      const option = optionsToInsert[i];
       
       if (!option.particulars) {
-        console.error(`Missing particulars for option ${i + 1}`);
         return res.status(400).json({ 
           error: `Option ${i + 1} missing particulars field` 
         });
       }
       
       if (!option.months) {
-        console.error(`Missing months for option ${i + 1}`);
         return res.status(400).json({ 
           error: `Option ${i + 1} missing months field` 
         });
       }
       
       if (option.loan_amount === undefined || option.loan_amount === null) {
-        console.error(`Missing loan_amount for option ${i + 1}`);
         return res.status(400).json({ 
           error: `Option ${i + 1} missing loan_amount field` 
         });
       }
       
+      // Auto-calculate EMI if not provided
       if (option.emi === undefined || option.emi === null) {
-        console.error(`Missing emi for option ${i + 1}`);
-        return res.status(400).json({ 
-          error: `Option ${i + 1} missing emi field` 
-        });
+        option.emi = calculateEMI(option.loan_amount, option.months);
       }
     }
     
-    // Prepare bulk insert with type conversion
-    const values = emi_options.map(option => [
+    // Prepare bulk insert
+    const values = optionsToInsert.map(option => [
       tour_id,
       parseFloat(option.loan_amount),
       option.particulars,
@@ -152,15 +182,10 @@ router.post('/emi/bulk', async (req, res) => {
       VALUES ?
     `;
     
-    console.log('Executing query:', query);
-    console.log('With values array:', [values]);
-    
     const [result] = await db.query(query, [values]);
     
-    console.log('MySQL Result:', result);
-    
     res.status(201).json({
-      message: `${emi_options.length} EMI options created successfully`,
+      message: `${optionsToInsert.length} EMI options created successfully`,
       affectedRows: result.affectedRows,
       insertId: result.insertId
     });
@@ -168,26 +193,36 @@ router.post('/emi/bulk', async (req, res) => {
     console.error('=== Error creating bulk EMI options ===');
     console.error('Error:', error.message);
     console.error('Stack:', error.stack);
-    console.error('=============================');
-    
-    // Check for MySQL specific errors
-    if (error.code === 'ER_NO_SUCH_TABLE') {
-      return res.status(500).json({ 
-        error: 'Database table not found. Please check if emi_options table exists.' 
-      });
-    }
-    
-    if (error.code === 'ER_PARSE_ERROR') {
-      return res.status(500).json({ 
-        error: 'SQL Syntax Error', 
-        details: error.sqlMessage 
-      });
-    }
     
     res.status(500).json({ 
       error: 'Failed to create EMI options',
       details: error.message 
     });
+  }
+});
+
+// Add a new route for calculating EMI
+router.post('/calculate', (req, res) => {
+  try {
+    const { loan_amount, months, interest_rate = 10 } = req.body;
+    
+    if (!loan_amount || !months) {
+      return res.status(400).json({ 
+        error: 'Loan amount and months are required' 
+      });
+    }
+    
+    const emi = calculateEMI(loan_amount, months, interest_rate);
+    
+    res.json({
+      loan_amount: parseFloat(loan_amount),
+      months: parseInt(months, 10),
+      interest_rate: parseFloat(interest_rate),
+      emi: emi
+    });
+  } catch (error) {
+    console.error('Error calculating EMI:', error);
+    res.status(500).json({ error: 'Failed to calculate EMI' });
   }
 });
 
