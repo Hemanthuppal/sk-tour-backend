@@ -74,7 +74,7 @@ router.post('/bulk', async (req, res) => {
   const { tour_id, hotels } = req.body;
 
   if (!tour_id || !Array.isArray(hotels) || hotels.length === 0) {
-    return res.status(400).json({ message: 'tour_id and hotels[] are required' });
+    return res.status(400).json({ message: 'tour_id and hotels are required' });
   }
 
   const conn = await pool.getConnection();
