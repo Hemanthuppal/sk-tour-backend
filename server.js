@@ -119,6 +119,8 @@ const enquiryRoutes = require('./routes/tourEnquiry');
 // Add this with other route imports
 const carouselImagesRoutes = require('./routes/carouselimages');
 
+// In your main server.js or app.js file
+const exhibitionRoutes = require('./routes/ExhibitionRoutes/exhibitionroutes');
 
 // Update the static middleware to serve carousel images
 app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carousel')));
@@ -139,8 +141,17 @@ if (!fs.existsSync(videosDir)) {
 
 console.log('Upload directories created at:', uploadsDir);
 
-// Static file serving
-app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+// ✅ Exhibition images (FIRST)
+app.use(
+  '/uploads/exhibition',
+  express.static(path.join(__dirname, 'uploads/exhibition'))
+);
+
+// ✅ Existing uploads (SECOND)
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'public/uploads'))
+);
 
 // Serve uploaded videos statically
 app.use('/video-uploads', express.static(uploadsDir));
@@ -194,6 +205,8 @@ app.use('/api', paymentRoutes);
 
 // Add this with your other route uses
 app.use('/api', checkoutRoutes);
+
+app.use('/api/exhibitions', exhibitionRoutes);
 
 
 // Simple test route
