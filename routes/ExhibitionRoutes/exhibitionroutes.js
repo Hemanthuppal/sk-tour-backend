@@ -475,4 +475,49 @@ router.post('/international/bulk', async (req, res) => {
   }
 });
 
+
+// ========== ADD THESE ROUTES TO YOUR BACKEND ==========
+
+// Get single domestic country
+router.get('/domestic/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [countries] = await db.query(
+      'SELECT * FROM domestic_exhibition WHERE id = ?',
+      [id]
+    );
+    
+    if (countries.length === 0) {
+      return res.status(404).json({ error: 'Country not found' });
+    }
+    
+    res.json(countries[0]);
+  } catch (error) {
+    console.error('Error fetching domestic country:', error);
+    res.status(500).json({ error: 'Error fetching domestic country' });
+  }
+});
+
+// Get single international country
+router.get('/international/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [countries] = await db.query(
+      'SELECT * FROM international_exhibition WHERE id = ?',
+      [id]
+    );
+    
+    if (countries.length === 0) {
+      return res.status(404).json({ error: 'Country not found' });
+    }
+    
+    res.json(countries[0]);
+  } catch (error) {
+    console.error('Error fetching international country:', error);
+    res.status(500).json({ error: 'Error fetching international country' });
+  }
+});
+
 module.exports = router;
