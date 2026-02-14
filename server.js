@@ -122,8 +122,15 @@ const carouselImagesRoutes = require('./routes/carouselimages');
 // In your main server.js or app.js file
 const exhibitionRoutes = require('./routes/ExhibitionRoutes/exhibitionroutes');
 
+// Import routes
+const offlineFlightsRoutes = require('./routes/offlineflights');
+
+const miceRoutes = require('./routes/miceroutes');
+
 // Update the static middleware to serve carousel images
 app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carousel')));
+// Add this with your other static middleware - MICE uploads
+app.use('/uploads/mice', express.static(path.join(__dirname, 'uploads/mice')));
 
 
 // Create uploads directory if it doesn't exist
@@ -207,6 +214,12 @@ app.use('/api', paymentRoutes);
 app.use('/api', checkoutRoutes);
 app.use('/api', Vendors);
 app.use('/api/exhibitions', exhibitionRoutes);
+
+// Routes
+app.use('/api/offline-flights', offlineFlightsRoutes);
+
+app.use('/api/mice', miceRoutes);
+
 
 
 // Simple test route

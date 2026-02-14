@@ -79,23 +79,21 @@ router.get('/about', async (req, res) => {
 });
 
 // Create or Update About Exhibition (Only one allowed)
+// Create or Update About Exhibition (Only one allowed)
 router.post('/about', (req, res) => {
   upload.single('bannerImage')(req, res, async (err) => {
     let connection;
     try {
-      // Handle multer errors
-      if (err) {
-        console.error('Multer error:', err);
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ error: 'File size too large. Maximum 5MB allowed.' });
-        }
-        if (err.message === 'Only image files are allowed!') {
-          return res.status(400).json({ error: 'Only image files (jpeg, jpg, png, gif) are allowed.' });
-        }
-        return res.status(400).json({ error: err.message });
+      // Handle multer errors (only for new files)
+      if (err && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File size too large. Maximum 5MB allowed.' });
       }
+      if (err && err.message === 'Only image files are allowed!') {
+        return res.status(400).json({ error: 'Only image files (jpeg, jpg, png, gif) are allowed.' });
+      }
+      // Don't return error if no file is uploaded (for updates)
 
-      const { questions } = req.body;
+      const { questions, isEdit } = req.body;
       let parsedQuestions = [];
       
       if (questions) {
@@ -106,12 +104,8 @@ router.post('/about', (req, res) => {
         }
       }
 
-      // Check if banner image is uploaded
-      if (!req.file) {
-        return res.status(400).json({ error: 'Banner image is required' });
-      }
-
-      const bannerImage = req.file.filename;
+      const isEditing = isEdit === 'true';
+      const bannerImage = req.file ? req.file.filename : null;
 
       // Get a connection from the pool
       connection = await db.getConnection();
@@ -121,22 +115,52 @@ router.post('/about', (req, res) => {
 
       try {
         // Check if about exhibition already exists
-        const [existing] = await connection.query('SELECT id FROM about_exhibition LIMIT 1');
+        const [existing] = await connection.query('SELECT id, banner_image FROM about_exhibition LIMIT 1');
         
         let exhibitionId;
+        let currentBannerImage = existing.length > 0 ? existing[0].banner_image : null;
+        
+        // Validate: banner image is required for new records
+        if (!isEditing && !bannerImage) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Banner image is required for new records' });
+        }
         
         if (existing.length > 0) {
           // Update existing
           exhibitionId = existing[0].id;
-          await connection.query(
-            'UPDATE about_exhibition SET banner_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-            [bannerImage, exhibitionId]
-          );
+          
+          // Prepare update query based on whether new banner image is provided
+          if (bannerImage) {
+            // Delete old banner image file if exists
+            if (currentBannerImage) {
+              const oldFilePath = path.join('uploads/exhibition/', currentBannerImage);
+              if (fs.existsSync(oldFilePath)) {
+                fs.unlinkSync(oldFilePath);
+              }
+            }
+            
+            await connection.query(
+              'UPDATE about_exhibition SET banner_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+              [bannerImage, exhibitionId]
+            );
+          } else {
+            // Keep existing banner image
+            await connection.query(
+              'UPDATE about_exhibition SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+              [exhibitionId]
+            );
+          }
           
           // Delete existing questions
           await connection.query('DELETE FROM about_exhibition_qa WHERE about_exhibition_id = ?', [exhibitionId]);
         } else {
-          // Create new
+          // Create new (bannerImage must exist at this point due to validation above)
+          if (!bannerImage) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Banner image is required' });
+          }
+          
           const [result] = await connection.query(
             'INSERT INTO about_exhibition (banner_image) VALUES (?)',
             [bannerImage]
@@ -448,6 +472,51 @@ router.post('/international/bulk', async (req, res) => {
   } catch (error) {
     console.error('Error adding bulk international countries:', error);
     res.status(500).json({ error: 'Error adding international countries' });
+  }
+});
+
+
+// ========== ADD THESE ROUTES TO YOUR BACKEND ==========
+
+// Get single domestic country
+router.get('/domestic/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [countries] = await db.query(
+      'SELECT * FROM domestic_exhibition WHERE id = ?',
+      [id]
+    );
+    
+    if (countries.length === 0) {
+      return res.status(404).json({ error: 'Country not found' });
+    }
+    
+    res.json(countries[0]);
+  } catch (error) {
+    console.error('Error fetching domestic country:', error);
+    res.status(500).json({ error: 'Error fetching domestic country' });
+  }
+});
+
+// Get single international country
+router.get('/international/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [countries] = await db.query(
+      'SELECT * FROM international_exhibition WHERE id = ?',
+      [id]
+    );
+    
+    if (countries.length === 0) {
+      return res.status(404).json({ error: 'Country not found' });
+    }
+    
+    res.json(countries[0]);
+  } catch (error) {
+    console.error('Error fetching international country:', error);
+    res.status(500).json({ error: 'Error fetching international country' });
   }
 });
 

@@ -68,7 +68,7 @@ router.post('/', async (req, res) => {
 });
 
 // Add this calculation function at the top of the file
-const calculateEMI = (loanAmount, months, interestRate = 10) => {
+const calculateEMI = (loanAmount, months, interestRate = 18) => {
   // EMI formula: P * r * (1+r)^n / ((1+r)^n - 1)
   // Where P = principal, r = monthly interest rate, n = number of months
   const principal = parseFloat(loanAmount);
@@ -204,7 +204,7 @@ router.post('/emi/bulk', async (req, res) => {
 // Add a new route for calculating EMI
 router.post('/calculate', (req, res) => {
   try {
-    const { loan_amount, months, interest_rate = 10 } = req.body;
+    const { loan_amount, months, interest_rate = 18 } = req.body;
     
     if (!loan_amount || !months) {
       return res.status(400).json({ 
