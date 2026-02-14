@@ -115,7 +115,7 @@ const paymentRoutes = require('./routes/payments');
 
 const enquiryRoutes = require('./routes/tourEnquiry');
 
-
+const Vendors = require('./routes/Vendors/Vendors')
 // Add this with other route imports
 const carouselImagesRoutes = require('./routes/carouselimages');
 
@@ -205,7 +205,7 @@ app.use('/api', paymentRoutes);
 
 // Add this with your other route uses
 app.use('/api', checkoutRoutes);
-
+app.use('/api', Vendors);
 app.use('/api/exhibitions', exhibitionRoutes);
 
 
