@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db'); // Assuming you have a DB connection file
+const db = require('../config/db'); 
 
 // Get all offline flights
 router.get('/', async (req, res) => {

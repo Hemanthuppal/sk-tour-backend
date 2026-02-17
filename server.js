@@ -125,6 +125,8 @@ const exhibitionRoutes = require('./routes/ExhibitionRoutes/exhibitionroutes');
 // Import routes
 const offlineFlightsRoutes = require('./routes/offlineflights');
 
+const offlineHotelsRoutes = require('./routes/offlinehotels');
+
 const miceRoutes = require('./routes/miceroutes');
 
 // Update the static middleware to serve carousel images
@@ -217,6 +219,8 @@ app.use('/api/exhibitions', exhibitionRoutes);
 
 // Routes
 app.use('/api/offline-flights', offlineFlightsRoutes);
+
+app.use('/api/offline-hotels', offlineHotelsRoutes);
 
 app.use('/api/mice', miceRoutes);
 
