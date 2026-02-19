@@ -130,6 +130,10 @@ const offlineHotelsRoutes = require('./routes/offlinehotels');
 
 const miceRoutes = require('./routes/miceroutes');
 
+const flightspaymentRoutes = require('./routes/flightspayments');
+
+
+
 // Update the static middleware to serve carousel images
 app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carousel')));
 // Add this with your other static middleware - MICE uploads
@@ -232,6 +236,8 @@ app.use('/api/exhibitions', exhibitionRoutes);
 // Routes
 app.use('/api/offline-flights', offlineFlightsRoutes);
 app.use('/api/online-flights', onlineFlightsRoutes);
+
+app.use('/api', flightspaymentRoutes);
 
 app.use('/api/offline-hotels', offlineHotelsRoutes);
 
