@@ -124,6 +124,7 @@ const exhibitionRoutes = require('./routes/ExhibitionRoutes/exhibitionroutes');
 
 // Import routes
 const offlineFlightsRoutes = require('./routes/offlineflights');
+const onlineFlightsRoutes = require('./routes/onlineflights');
 
 const offlineHotelsRoutes = require('./routes/offlinehotels');
 
@@ -155,6 +156,17 @@ app.use(
   '/uploads/exhibition',
   express.static(path.join(__dirname, 'uploads/exhibition'))
 );
+
+
+// ✅ Existing uploads (SECOND)
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, 'public/uploads'))
+);
+
+
+// Add this with your other static middleware
+app.use('/uploads/hotels', express.static(path.join(__dirname, 'uploads/hotels')));
 
 // ✅ Existing uploads (SECOND)
 app.use(
@@ -219,8 +231,11 @@ app.use('/api/exhibitions', exhibitionRoutes);
 
 // Routes
 app.use('/api/offline-flights', offlineFlightsRoutes);
+app.use('/api/online-flights', onlineFlightsRoutes);
 
 app.use('/api/offline-hotels', offlineHotelsRoutes);
+
+
 
 app.use('/api/mice', miceRoutes);
 
