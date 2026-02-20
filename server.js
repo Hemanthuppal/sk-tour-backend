@@ -130,7 +130,7 @@ const offlineHotelsRoutes = require('./routes/offlinehotels');
 
 const miceRoutes = require('./routes/miceroutes');
 
-const flightspaymentRoutes = require('./routes/flightspayments');
+const flightspaymentRoutes = require('./routes/flightspayments_v1');
 
 
 

@@ -1,127 +1,8 @@
-// routes/flightPaymentRoutes.js - Fixed version
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db'); // Your database connection
 
-// Save flight transaction to online_flightbooking_transactions table
-// routes/flightPaymentRoutes.js - Fixed save-transaction endpoint
 
-// Save flight transaction to online_flightbooking_transactions table
-router.post('/flight-bookings/save-transaction', async (req, res) => {
-  try {
-    const {
-      user_id,
-      order_id,
-      payment_id,
-      payment_amount,
-      payment_method,
-      payment_status,
-      email
-    } = req.body;
-
-    console.log('Saving flight transaction to online_flightbooking_transactions:', {
-      user_id,
-      order_id,
-      payment_id,
-      payment_amount,
-      payment_status,
-      email
-    });
-
-    // Check if a transaction with this order_id already exists
-    const [existing] = await db.execute(
-      'SELECT id FROM online_flightbooking_transactions WHERE order_id = ?',
-      [order_id]
-    );
-
-    if (existing.length > 0) {
-      console.log('Transaction already exists, updating status...');
-      
-      // Update existing transaction
-      const updateQuery = `
-        UPDATE online_flightbooking_transactions 
-        SET 
-          payment_status = ?,
-          payment_id = ?,
-          payment_amount = ?,
-          updated_at = NOW()
-        WHERE order_id = ?
-      `;
-      
-      await db.execute(updateQuery, [
-        payment_status,
-        payment_id,
-        payment_amount,
-        order_id
-      ]);
-
-      return res.json({
-        success: true,
-        message: 'Transaction updated successfully',
-        transactionId: existing[0].id
-      });
-    }
-
-    // Insert into online_flightbooking_transactions table
-    const query = `
-      INSERT INTO online_flightbooking_transactions 
-      (user_id, order_id, payment_id, payment_amount, payment_method, payment_status, email, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-    `;
-
-    const values = [
-      user_id || null,              // user_id
-      order_id || null,              // order_id
-      payment_id || null,            // payment_id
-      payment_amount || 0,           // payment_amount
-      payment_method || 'PhonePe',   // payment_method
-      payment_status || 'Pending',   // payment_status
-      email || ''                    // email
-    ];
-
-    const [result] = await db.execute(query, values);
-
-    // Also update the main booking table with transaction reference
-    if (result.insertId) {
-      // Get the booking_id from localStorage or reference in the request
-      // You might need to pass booking_id in the request or derive it from order_id
-      const bookingId = req.body.booking_id; // Add this to your request if needed
-      
-      if (bookingId) {
-        const updateQuery = `
-          UPDATE onlineflights 
-          SET 
-            payment_status = ?,
-            booking_status = ?,
-            updated_at = NOW()
-          WHERE booking_id = ?
-        `;
-        
-        await db.execute(updateQuery, [
-          payment_status === 'Success' ? 'Completed' : 'Failed',
-          payment_status === 'Success' ? 'Confirmed' : 'Failed',
-          bookingId
-        ]);
-      }
-    }
-
-    res.json({
-      success: true,
-      message: 'Transaction saved successfully',
-      transactionId: result.insertId
-    });
-
-  } catch (error) {
-    console.error('Error saving flight transaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to save transaction',
-      error: error.message
-    });
-  }
-});
-
-// Get flight booking by ID with transaction details
 router.get('/flight-bookings/:bookingId', async (req, res) => {
   try {
     const { bookingId } = req.params;
@@ -139,7 +20,7 @@ router.get('/flight-bookings/:bookingId', async (req, res) => {
 
     const booking = bookingRows[0];
     
-    // Then get the transaction details if any
+    // Get the transaction details if any
     const transactionQuery = `
       SELECT * FROM online_flightbooking_transactions 
       WHERE order_id = ? OR order_id = ?
@@ -176,132 +57,144 @@ router.get('/flight-bookings/:bookingId', async (req, res) => {
   }
 });
 
-// Get all flight transactions
-router.get('/flight-transactions', async (req, res) => {
-  try {
-    const query = `
-      SELECT 
-        t.*,
-        b.flight_number,
-        b.airline_name,
-        b.dep_city_code,
-        b.arr_city_code,
-        b.passenger_count,
-        b.contact_name,
-        b.contact_email,
-        b.contact_phone
-      FROM online_flightbooking_transactions t
-      LEFT JOIN onlineflights b ON t.order_id = b.booking_token_id OR t.order_id = b.reference_id
-      ORDER BY t.created_at DESC
-    `;
-    
-    const [rows] = await db.execute(query);
-    
-    res.json({
-      success: true,
-      data: rows,
-      total: rows.length
-    });
-  } catch (error) {
-    console.error('Error fetching flight transactions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch transactions',
-      error: error.message
-    });
-  }
-});
+// // Book flight using booking_token_id
+// router.post('/flight-bookings/book/:bookingTokenId', async (req, res) => {
+//   try {
+//     const { bookingTokenId } = req.params;
+//       alert ("before excuting query")
 
-// Get single flight transaction by ID
-router.get('/flight-transactions/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
+//     // Fetch booking details from onlineflights table
+//     const bookingQuery = `
+//       SELECT 
+//         original_flight_id AS id,
+//         dep_date AS onward_date,
+//         IFNULL(return_dep_date, '') AS return_date,
+//         adult_count AS adult,
+//         child_count AS children,
+//         infant_count AS infant,
+//         dep_city_code,
+//         arr_city_code,
+//         total_passengers AS total_book_seats,
+//         contact_name,
+//         contact_email,
+//         contact_phone AS contact_number,
+//         static_value AS static,
+//         booking_token_id,
+//         total_price AS total_amount,
+//         user_ip AS end_user_ip,
+//         JSON_EXTRACT(passenger_details, '$') AS flight_traveller_details
+//       FROM onlineflights
+//       WHERE booking_token_id = ? AND booking_status = 'pending'
+//     `;
     
-    const query = `
-      SELECT 
-        t.*,
-        b.flight_number,
-        b.airline_name,
-        b.dep_city_code,
-        b.arr_city_code,
-        b.dep_time,
-        b.arr_time,
-        b.passenger_details,
-        b.contact_name,
-        b.contact_email,
-        b.contact_phone
-      FROM online_flightbooking_transactions t
-      LEFT JOIN onlineflights b ON t.order_id = b.booking_token_id OR t.order_id = b.reference_id
-      WHERE t.id = ?
-    `;
+//     const [bookingRows] = await db.execute(bookingQuery, [bookingTokenId]);
     
-    const [rows] = await db.execute(query, [id]);
+//     if (bookingRows.length === 0) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Booking not found or already processed'
+//       });
+//     }
+// else{
+//   alert ("booking.data found")
+// }
+//     const bookingData = bookingRows[0];
     
-    if (rows.length > 0) {
-      // Parse passenger details if needed
-      if (rows[0].passenger_details) {
-        try {
-          rows[0].passenger_details = JSON.parse(rows[0].passenger_details);
-        } catch (e) {
-          // Keep as is if not JSON
-        }
-      }
+//     // Parse flight_traveller_details if it's a string
+//     if (typeof bookingData.flight_traveller_details === 'string') {
+//       bookingData.flight_traveller_details = JSON.parse(bookingData.flight_traveller_details);
+//     }
+
+//     // Add the token (you might need to generate this or get it from somewhere)
+//     bookingData.token = "3-1-NEWTEST-dmjkwj78BJHk8"; // This should be dynamic based on your logic
+//       alert ("before excuting third party flight booking api")
+
+//     // Make API call to third-party booking service
+//     const response = await fetch('https://devapi.flightapi.co.in/v1/fbapi/book', {
+//       method: 'POST',
+//       headers: {
+//         'x-api-key': '1FMQKB1639407126571',
+//         'Content-Type': 'application/json'
+//       },
+//       body: JSON.stringify(bookingData)
+//     });
+
+//     const apiResponse = await response.json();
+
+//     // Check if booking was successful (errorCode: 0 means success)
+//     if (apiResponse.errorCode === 0) {
+//             alert ("referrence number generated and booking is successfull")
+
+//       const referenceId = apiResponse.data.reference_id;
       
-      res.json({
-        success: true,
-        transaction: rows[0]
-      });
-    } else {
-      res.json({
-        success: false,
-        message: 'Transaction not found'
-      });
-    }
-  } catch (error) {
-    console.error('Error fetching flight transaction:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch transaction',
-      error: error.message
-    });
-  }
-});
+//       // Update the booking with reference_id and status
+//       const updateQuery = `
+//         UPDATE onlineflights 
+//         SET reference_id = ?, 
+//             booking_status = 'confirmed',
+//             updated_at = NOW()
+//         WHERE booking_token_id = ?
+//       `;
+      
+//       await db.execute(updateQuery, [referenceId, bookingTokenId]);
 
-// Update flight transaction status
-router.put('/flight-transactions/:id/status', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { status } = req.body;
-    
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        message: 'Status is required'
-      });
-    }
-    
-    const query = 'UPDATE online_flightbooking_transactions SET payment_status = ?, updated_at = NOW() WHERE id = ?';
-    const [result] = await db.execute(query, [status, id]);
-    
-    if (result.affectedRows > 0) {
-      res.json({
-        success: true,
-        message: 'Transaction status updated successfully'
-      });
-    } else {
-      res.json({
-        success: false,
-        message: 'Transaction not found'
-      });
-    }
-  } catch (error) {
-    console.error('Error updating transaction status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update transaction',
-      error: error.message
-    });
-  }
-});
+//       // Insert transaction record
+//       const transactionQuery = `
+//         INSERT INTO online_flightbooking_transactions 
+//         (order_id, reference_id, transaction_data, status, created_at)
+//         VALUES (?, ?, ?, 'success', NOW())
+//       `;
+      
+//       await db.execute(transactionQuery, [
+//         bookingTokenId,
+//         referenceId,
+//         JSON.stringify(apiResponse)
+//       ]);
 
-module.exports = router;
+//       return res.json({
+//         success: true,
+//         message: 'Booking confirmed successfully',
+//         reference_id: referenceId,
+//         api_response: apiResponse
+//       });
+//     } else {
+//                   alert (" booking is unsuccessfull")
+
+//       // Handle booking failure
+//       const updateQuery = `
+//         UPDATE onlineflights 
+//         SET booking_status = 'failed',
+//             updated_at = NOW()
+//         WHERE booking_token_id = ?
+//       `;
+      
+//       await db.execute(updateQuery, [bookingTokenId]);
+
+//       // Insert failed transaction record
+//       const transactionQuery = `
+//         INSERT INTO online_flightbooking_transactions 
+//         (order_id, transaction_data, status, created_at)
+//         VALUES (?, ?, 'failed', NOW())
+//       `;
+      
+//       await db.execute(transactionQuery, [
+//         bookingTokenId,
+//         JSON.stringify(apiResponse)
+//       ]);
+
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Booking failed',
+//         api_response: apiResponse
+//       });
+//     }
+
+//   } catch (error) {
+//     console.error('Error booking flight:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Failed to book flight',
+//       error: error.message
+//     });
+//   }
+// });

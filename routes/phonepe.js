@@ -35,12 +35,11 @@ let client = createPhonePeClient(currentEnv);
 
 const FRONTEND_PAYMENT_RESULT_URL = process.env.FRONTEND_PAYMENT_RESULT_URL;
 
-/* ================= COMBINED PHONEPE API ================= */
-// In your phonepe API (routes/phonepe.js), update the create-order section:
+// In routes/phonepe.js - UPDATE THIS SECTION
 
 router.post("/phonepe/orders", async (req, res) => {
     try {
-        const { action, amount, currency, environment, merchantOrderId, customerDetails } = req.body;
+        const { action, amount, currency, environment, merchantOrderId, customerDetails, redirectUrl } = req.body;
         const env = environment || currentEnv;
         
         console.log(`PhonePe API called - Action: ${action}, Env: ${env}`);
@@ -63,12 +62,20 @@ router.post("/phonepe/orders", async (req, res) => {
             const amountInPaise = Math.round(Number(amount) * 100);
             const orderId = merchantOrderId || randomUUID();
 
+            if (!redirectUrl) {
+                return res.status(400).json({
+                    success: false,
+                    message: "redirectUrl is required from frontend"
+                });
+            }
+
+            const finalRedirectUrl = `${redirectUrl}?orderId=${orderId}&gateway=phonepe&environment=${env}`;
+            console.log(`✅ Using frontend redirect URL: ${finalRedirectUrl}`);
+
             const request = StandardCheckoutPayRequest.builder()
                 .merchantOrderId(orderId)
                 .amount(amountInPaise)
-                .redirectUrl(
-                    `${FRONTEND_PAYMENT_RESULT_URL}?orderId=${orderId}&gateway=phonepe&environment=${env}`
-                )
+                .redirectUrl(finalRedirectUrl)
                 .build();
 
             const response = await client.pay(request);

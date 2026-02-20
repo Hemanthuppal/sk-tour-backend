@@ -23,10 +23,16 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// GET all vendors
+// GET all vendors with category name
 router.get('/vendors', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM vendors ORDER BY id DESC');
+    const sql = `
+      SELECT v.*, c.name as category_name 
+      FROM vendors v 
+      LEFT JOIN vendor_categories c ON v.category_id = c.id 
+      ORDER BY v.id DESC
+    `;
+    const [rows] = await pool.query(sql);
     res.json(rows);
   } catch (error) {
     console.error('Error fetching vendors:', error);
@@ -34,11 +40,17 @@ router.get('/vendors', async (req, res) => {
   }
 });
 
-// GET single vendor by ID
+// GET single vendor by ID with category name
 router.get('/vendors/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await pool.query('SELECT * FROM vendors WHERE id = ?', [id]);
+    const sql = `
+      SELECT v.*, c.name as category_name 
+      FROM vendors v 
+      LEFT JOIN vendor_categories c ON v.category_id = c.id 
+      WHERE v.id = ?
+    `;
+    const [rows] = await pool.query(sql, [id]);
     
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Vendor not found' });
@@ -60,7 +72,7 @@ router.post('/vendors', upload.fields([
 ]), async (req, res) => {
   try {
     const {
-      category_name = null,
+      category_id = null, 
       title = null,
       first_name,
       last_name = null,
@@ -103,7 +115,7 @@ router.post('/vendors', upload.fields([
     const customerProfilePath = files.customer_profile ? files.customer_profile[0].path : null;
 
     const sql = `INSERT INTO vendors (
-      category_name, title, first_name, last_name, position, 
+      category_id, title, first_name, last_name, position, 
       company_name, website, email1, email2, mobile1, mobile2, 
       mobile3, mobile4, landline, landline_code, remark, is_active,
       address1, address2, landmark, area, country, state, city,
@@ -112,7 +124,7 @@ router.post('/vendors', upload.fields([
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const values = [
-      category_name, title, first_name, last_name, position,
+      category_id, title, first_name, last_name, position,
       company_name, website, email1, email2, mobile1, mobile2,
       mobile3, mobile4, landline, landline_code, remark, activeStatus,
       address1, address2, landmark, area, country, state, city,
@@ -146,7 +158,7 @@ router.put('/vendors/:id', upload.fields([
     const { id } = req.params;
     
     const {
-      category_name, title, first_name, last_name, position,
+      category_id, title, first_name, last_name, position,
       company_name, website, email1, email2, mobile1, mobile2,
       mobile3, mobile4, landline, landline_code, remark, is_active,
       address1, address2, landmark, area, country, state, city,
@@ -160,7 +172,7 @@ router.put('/vendors/:id', upload.fields([
 
     // Add text fields if they exist
     const textFields = {
-      category_name, title, first_name, last_name, position,
+      category_id, title, first_name, last_name, position,
       company_name, website, email1, email2, mobile1, mobile2,
       mobile3, mobile4, landline, landline_code, remark,
       address1, address2, landmark, area, country, state, city,

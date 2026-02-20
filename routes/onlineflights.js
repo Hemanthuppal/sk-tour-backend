@@ -3,6 +3,8 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const dotenv = require("dotenv");
+dotenv.config();
 
 // Save booking details when proceeding to payment
 router.post('/save-booking', async (req, res) => {
@@ -46,8 +48,6 @@ router.post('/save-booking', async (req, res) => {
       (bookingParams.children || 0) +
       (bookingParams.infants || 0);
 
-    // Count the columns from your table structure (excluding auto-generated timestamps)
-    // Total columns: 71, but we exclude created_at and updated_at as they have defaults
     const columns = [
       'original_flight_id', 'booking_id', 'reference_id', 'booking_token_id', 'trip_type',
       'airline_name', 'flight_number', 'airline_code',
@@ -83,6 +83,8 @@ router.post('/save-booking', async (req, res) => {
       INSERT INTO onlineflights (${columns.join(', ')})
       VALUES (${placeholders})
     `;
+const user_ip = process.env.user_ip ;
+const static = process.env.static ;
 
     // Build values array with exactly the same number as columns (69 values)
     const values = [
@@ -200,10 +202,11 @@ router.post('/save-booking', async (req, res) => {
       null,                                // 67 - api_response
       
       // 68: Static value
-      bookingParams.staticValue || onward.static || null, // 68
-      
+      // bookingParams.staticValue || onward.static || null, // 68
+      static,
       // 69: User IP
-      req.ip || null                       // 69 - user_ip
+      // req.ip || null                       // 69 - user_ip
+      user_ip
     ];
 
     // Verify placeholder count matches values count
@@ -363,5 +366,6 @@ router.get('/user-bookings', async (req, res) => {
     });
   }
 });
+
 
 module.exports = router;
