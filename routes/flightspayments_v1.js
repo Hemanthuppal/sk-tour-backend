@@ -443,15 +443,15 @@ console.log("Booking Data:", bookingData);
       const referenceId = apiResponse.data.reference_id;
       
       // Update the booking with reference_id and status
-      // const updateQuery = `
-      //   UPDATE onlineflights 
-      //   SET reference_id = ?, 
-      //       booking_status = 'confirmed',
-      //       updated_at = NOW()
-      //   WHERE booking_token_id = ?
-      // `;
+      const updateQuery = `
+        UPDATE onlineflights 
+        SET reference_id = ?, 
+            booking_status = 'confirmed',
+            updated_at = NOW()
+        WHERE booking_token_id = ?
+      `;
       
-      // await db.execute(updateQuery, [referenceId, bookingTokenId]);
+      await db.execute(updateQuery, [referenceId, bookingTokenId]);
 
       // Check if transaction record exists and update it, otherwise insert
       // const checkTransactionQuery = `

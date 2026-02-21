@@ -62,6 +62,8 @@ router.post("/phonepe/orders", async (req, res) => {
             const amountInPaise = Math.round(Number(amount) * 100);
             const orderId = merchantOrderId || randomUUID();
 
+            // ✅ IMPORTANT: ONLY use redirectUrl from frontend
+            // ❌ Do NOT use FRONTEND_PAYMENT_RESULT_URL from .env file
             if (!redirectUrl) {
                 return res.status(400).json({
                     success: false,
@@ -169,6 +171,174 @@ router.post("/phonepe/orders", async (req, res) => {
     }
 });
 
+router.post("/flight/phonepe/orders", async (req, res) => {
+    try {
+        const { action, amount, currency, environment, merchantOrderId, customerDetails, redirectUrl } = req.body;
+        const env = environment || currentEnv;
+        
+        console.log(`PhonePe API called - Action: ${action}, Env: ${env}`);
+        
+        if (action === 'create-order') {
+            // Create Order
+            if (!amount) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Amount is required"
+                });
+            }
+            
+            // Reinitialize client if environment changed
+            if (environment && environment !== currentEnv) {
+                currentEnv = environment;
+                client = createPhonePeClient(currentEnv);
+            }
+            
+            const amountInPaise = Math.round(Number(amount) * 100);
+            const orderId = merchantOrderId || randomUUID();
+
+            if (!redirectUrl) {
+                return res.status(400).json({
+                    success: false,
+                    message: "redirectUrl is required from frontend"
+                });
+            }
+
+            const finalRedirectUrl = `${redirectUrl}?orderId=${orderId}&gateway=phonepe&environment=${env}`;
+            console.log(`✅ Using frontend redirect URL: ${finalRedirectUrl}`);
+
+            const request = StandardCheckoutPayRequest.builder()
+                .merchantOrderId(orderId)
+                .amount(amountInPaise)
+                .redirectUrl(finalRedirectUrl)
+                .build();
+
+            const response = await client.pay(request);
+
+            // CREATE the transaction record here (not in frontend)
+            if (customerDetails) {
+                // Convert phone to number for user_id if needed
+                const userId = customerDetails.phone ? parseInt(customerDetails.phone.replace(/\D/g, '')) || null : null;
+                
+                // Check if a transaction with this order_id already exists
+                const [existing] = await db.execute(
+                    `SELECT id FROM online_flightbooking_transactions WHERE order_id = ?`,
+                    [orderId]
+                );
+                
+                if (existing.length > 0) {
+                    // Update existing transaction
+                    await db.execute(
+                        `UPDATE online_flightbooking_transactions 
+                         SET 
+                             payment_amount = ?,
+                             payment_method = ?,
+                             payment_status = ?,
+                             email = ?,
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE order_id = ?`,
+                        [
+                            amount,
+                            "PhonePe",
+                            "Processing",
+                            customerDetails.email || null,
+                            orderId
+                        ]
+                    );
+                    console.log(`✅ Updated existing transaction for order: ${orderId}`);
+                } else {
+                    // Insert new transaction
+                    await db.execute(
+                        `INSERT INTO online_flightbooking_transactions 
+                         (user_id, order_id, payment_id, payment_amount, payment_method, payment_status, email)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            userId,
+                            orderId,                          // order_id
+                            orderId,                          // payment_id (same as order_id initially)
+                            amount,                           // payment_amount
+                            "PhonePe",                        // payment_method
+                            "Processing",                     // payment_status
+                            customerDetails.email || null     // email
+                        ]
+                    );
+                    console.log(`✅ Created new transaction record for order: ${orderId}`);
+                }
+            }
+
+            return res.json({
+                success: true,
+                action: 'order-created',
+                checkoutPageUrl: response.redirectUrl,
+                merchantOrderId: orderId,
+                amount: amount,
+                currency: currency || "INR",
+                environment: env
+            });
+            
+        } else if (action === 'check-status') {
+            // Check Status
+            if (!merchantOrderId) {
+                return res.status(400).json({
+                    success: false,
+                    message: "merchantOrderId is required"
+                });
+            }
+
+            console.log(`Checking PhonePe status for: ${merchantOrderId}, env: ${env}`);
+
+            // Use correct client for environment
+            const checkClient = createPhonePeClient(env);
+            const response = await checkClient.getOrderStatus(merchantOrderId);
+            
+            console.log("PhonePe API response:", response);
+            
+            const phonepeStatus = response.state || response.status;
+            let finalStatus = "PENDING";
+
+            if (phonepeStatus === "COMPLETED" || phonepeStatus === "SUCCESS") {
+                finalStatus = "SUCCESS";
+                // UPDATE the transaction status
+                await db.execute(
+                    `UPDATE online_flightbooking_transactions 
+                     SET payment_status = ?, updated_at = CURRENT_TIMESTAMP 
+                     WHERE order_id = ?`,
+                    ["Success", merchantOrderId]
+                );
+            } else if (phonepeStatus === "FAILED") {
+                finalStatus = "FAILED";
+                await db.execute(
+                    `UPDATE online_flightbooking_transactions 
+                     SET payment_status = ?, updated_at = CURRENT_TIMESTAMP 
+                     WHERE order_id = ?`,
+                    ["Failed", merchantOrderId]
+                );
+            }
+
+            return res.json({
+                success: true,
+                action: 'status-checked',
+                merchantOrderId,
+                status: finalStatus,
+                phonepeStatus: phonepeStatus,
+                environment: env
+            });
+            
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid action. Use: create-order, check-status"
+            });
+        }
+        
+    } catch (error) {
+        console.error("PhonePe API error:", error);
+        res.status(500).json({
+            success: false,
+            message: "PhonePe operation failed",
+            error: error.message
+        });
+    }
+});
 /* ================= GET ENVIRONMENT ================= */
 router.get("/phonepe/environment", (req, res) => {
   const credentials = getPhonePeCredentials(currentEnv);
