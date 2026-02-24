@@ -131,6 +131,7 @@ const offlineHotelsRoutes = require('./routes/offlinehotels');
 const miceRoutes = require('./routes/miceroutes');
 
 const flightspaymentRoutes = require('./routes/flightspayments_v1');
+const bungalowRoutes = require('./routes/bunglow');
 
 
 
@@ -163,10 +164,14 @@ app.use(
 
 
 // ✅ Existing uploads (SECOND)
-app.use(
-  '/uploads',
-  express.static(path.join(__dirname, 'public/uploads'))
-);
+// app.use(
+//   '/uploads',
+//   express.static(path.join(__dirname, 'public/uploads'))
+// );
+
+
+// Serve bungalow uploads
+app.use('/uploads/bungalows', express.static(path.join(__dirname, 'uploads/bungalows')));
 
 
 // Add this with your other static middleware
@@ -238,6 +243,9 @@ app.use('/api/offline-flights', offlineFlightsRoutes);
 app.use('/api/online-flights', onlineFlightsRoutes);
 
 app.use('/api', flightspaymentRoutes);
+
+// Add this with your other routes
+app.use('/api/bungalows', bungalowRoutes);
 
 app.use('/api/offline-hotels', offlineHotelsRoutes);
 
