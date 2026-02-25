@@ -278,4 +278,97 @@ router.put('/update-order', async (req, res) => {
   }
 });
 
+
+
+// Update carousel image with file replacement
+router.put('/:id/update-with-image', upload.single('image'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, link } = req.body;
+    
+    // Get existing image details
+    const [existingImages] = await pool.query(
+      'SELECT image_url FROM carousel_images WHERE id = ?',
+      [id]
+    );
+    
+    if (existingImages.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Image not found'
+      });
+    }
+    
+    let image_url = existingImages[0].image_url;
+    
+    // If new image is uploaded, delete old one and use new
+    if (req.file) {
+      // Delete old file
+      const oldImagePath = path.join(__dirname, '..', existingImages[0].image_url);
+      if (fs.existsSync(oldImagePath)) {
+        fs.unlinkSync(oldImagePath);
+      }
+      
+      // Set new image URL
+      image_url = `/uploads/carousel/${req.file.filename}`;
+    }
+    
+    // Check which columns exist
+    const [columns] = await pool.query('SHOW COLUMNS FROM carousel_images');
+    const columnNames = columns.map(col => col.Field);
+    
+    // Build query dynamically based on existing columns
+    let setClauses = ['image_url = ?'];
+    let values = [image_url];
+    
+    if (columnNames.includes('title')) {
+      setClauses.push('title = ?');
+      values.push(title || null);
+    }
+    
+    if (columnNames.includes('description')) {
+      setClauses.push('description = ?');
+      values.push(description || null);
+    }
+    
+    if (columnNames.includes('link')) {
+      setClauses.push('link = ?');
+      values.push(link || null);
+    }
+    
+    values.push(id);
+    
+    const query = `UPDATE carousel_images SET ${setClauses.join(', ')} WHERE id = ?`;
+    
+    const [result] = await pool.query(query, values);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Image not found'
+      });
+    }
+    
+    // Fetch updated image
+    const [updatedImage] = await pool.query(
+      'SELECT * FROM carousel_images WHERE id = ?',
+      [id]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Image updated successfully',
+      data: updatedImage[0]
+    });
+    
+  } catch (error) {
+    console.error('Error updating image:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating image',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
