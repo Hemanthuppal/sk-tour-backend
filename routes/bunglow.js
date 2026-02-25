@@ -131,18 +131,31 @@ router.post('/', async (req, res) => {
         inclusive,
         exclusive,
         places_nearby,
-        booking_policy
+        booking_policy,
+        // Tour Cost fields
+        per_pax_twin,
+        per_pax_triple,
+        child_with_bed,
+        child_without_bed,
+        infant,
+        per_pax_single
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `INSERT INTO bungalows 
-            (bungalow_code, name, price, overview, inclusive, exclusive, places_nearby, booking_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            (bungalow_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
                 bungalow_code,
                 name,
                 price,
+                per_pax_twin || null,
+                per_pax_triple || null,
+                child_with_bed || null,
+                child_without_bed || null,
+                infant || null,
+                per_pax_single || null,
                 overview || '',
                 inclusive || '',
                 exclusive || '',
@@ -157,6 +170,7 @@ router.post('/', async (req, res) => {
             message: 'Bungalow created successfully'
         });
     } catch (err) {
+        console.error('Error creating bungalow:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -172,18 +186,32 @@ router.put('/:id', async (req, res) => {
         exclusive,
         places_nearby,
         booking_policy,
-        status
+        status,
+        // Tour Cost fields
+        per_pax_twin,
+        per_pax_triple,
+        child_with_bed,
+        child_without_bed,
+        infant,
+        per_pax_single
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `UPDATE bungalows 
-             SET name = ?, price = ?, overview = ?, inclusive = ?, 
+             SET name = ?, price = ?, per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
+                 child_without_bed = ?, infant = ?, per_pax_single = ?, overview = ?, inclusive = ?, 
                  exclusive = ?, places_nearby = ?, booking_policy = ?, status = ?
              WHERE bungalow_id = ?`,
             [
                 name,
                 price,
+                per_pax_twin || null,
+                per_pax_triple || null,
+                child_with_bed || null,
+                child_without_bed || null,
+                infant || null,
+                per_pax_single || null,
                 overview || '',
                 inclusive || '',
                 exclusive || '',
@@ -203,6 +231,7 @@ router.put('/:id', async (req, res) => {
             message: 'Bungalow updated successfully'
         });
     } catch (err) {
+        console.error('Error updating bungalow:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -457,7 +486,6 @@ router.get('/related/:bungalowId', async (req, res) => {
     }
 });
 
-// Update related bungalow
 // Update related bungalow
 router.put('/related/:relationId', async (req, res) => {
     const relationId = req.params.relationId;
