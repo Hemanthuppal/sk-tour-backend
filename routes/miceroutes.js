@@ -719,4 +719,135 @@ router.delete('/events/:id', async (req, res) => {
   }
 });
 
+
+
+
+router.post("/enquiry-form", async (req, res) => {
+  try {
+    const {
+      company_name,
+      reference_no,
+      contact_person,
+      cell_no,
+      email,
+      city,
+      pin_code,
+      state,
+      country,
+      num_people,
+      num_rooms,
+      single_room,
+      double_room,
+      triple_room,
+      suite_room,
+      city_type,
+      city_name,
+      domestic_destination,
+      international_destination,
+      hotel_category,
+      budget,
+      common_inclusion
+    } = req.body;
+
+    const sql = `
+      INSERT INTO mice_enquiries
+      (company_name, reference_no, contact_person, cell_no, email,
+       city, pin_code, state, country, num_people, num_rooms,
+       single_room, double_room, triple_room, suite_room,
+       city_type, city_name, domestic_destination,
+       international_destination, hotel_category,
+       budget, common_inclusion)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    await db.query(sql, [
+      company_name,
+      reference_no,
+      contact_person,
+      cell_no,
+      email,
+      city,
+      pin_code,
+      state,
+      country,
+      num_people,
+      num_rooms,
+      single_room,
+      double_room,
+      triple_room,
+      suite_room,
+      city_type,
+      city_name,
+      domestic_destination,
+      international_destination,
+      hotel_category,
+      budget,
+      common_inclusion
+    ]);
+
+    res.status(201).json({ message: "Enquiry Created Successfully" });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Server Error" });
+  }
+});
+
+
+// ================= READ ALL =================
+router.get("/enquiry-form", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM mice_enquiries ORDER BY id DESC");
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: "Server Error" });
+  }
+});
+
+
+// ================= READ ONE =================
+router.get("/enquiry/:id", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM mice_enquiries WHERE id = ?",
+      [req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: "Server Error" });
+  }
+});
+
+
+// ================= UPDATE =================
+router.put("/enquiry/:id", async (req, res) => {
+  try {
+    const { company_name, contact_person } = req.body;
+
+    await db.query(
+      "UPDATE mice_enquiries SET company_name=?, contact_person=? WHERE id=?",
+      [company_name, contact_person, req.params.id]
+    );
+
+    res.json({ message: "Updated Successfully" });
+
+  } catch (error) {
+    res.status(500).json({ error: "Server Error" });
+  }
+});
+
+
+// ================= DELETE =================
+router.delete("/enquiry/:id", async (req, res) => {
+  try {
+    await db.query("DELETE FROM mice_enquiries WHERE id=?", [
+      req.params.id
+    ]);
+
+    res.json({ message: "Deleted Successfully" });
+
+  } catch (error) {
+    res.status(500).json({ error: "Server Error" });
+  }
+});
 module.exports = router;
