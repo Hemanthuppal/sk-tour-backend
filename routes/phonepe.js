@@ -11,7 +11,9 @@ const router = express.Router();
 
 // Helper function to get PhonePe credentials
 const getPhonePeCredentials = (env) => {
-  const envSuffix = env === 'live' ? '_LIVE' : '_TEST';
+//   const envSuffix = env === 'live' ? '_LIVE' : '_TEST';
+//  const envSuffix = '_TEST';
+  const envSuffix = '_LIVE';
   return {
     clientId: process.env[`PHONEPE_CLIENT_ID${envSuffix}`],
     clientSecret: process.env[`PHONEPE_CLIENT_SECRET${envSuffix}`],
