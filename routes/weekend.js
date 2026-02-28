@@ -530,4 +530,191 @@ router.delete('/related/:relationId', async (req, res) => {
     }
 });
 
+
+
+// ==================== WEEKEND BOOKING FORM ROUTES ====================
+
+// POST - Save weekend booking form data
+router.post('/bookings', async (req, res) => {
+    const {
+        property_name,
+        city,
+        person_name,
+        cell_no,
+        email_id,
+        address,
+        city_location,
+        pin_code,
+        state,
+        country,
+        no_of_adults,
+        no_of_rooms,
+        no_of_child,
+        children
+    } = req.body;
+
+    try {
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            // Insert main weekend booking
+            const [bookingResult] = await connection.query(
+                `INSERT INTO weekend_bookings 
+                (property_name, city, person_name, cell_no, email_id, address, city_location, 
+                 pin_code, state, country, no_of_adults, no_of_rooms, no_of_child)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    property_name,
+                    city,
+                    person_name,
+                    cell_no,
+                    email_id,
+                    address,
+                    city_location,
+                    pin_code,
+                    state,
+                    country || 'India',
+                    no_of_adults,
+                    no_of_rooms,
+                    no_of_child || 0
+                ]
+            );
+
+            const bookingId = bookingResult.insertId;
+
+            // Insert child details if any
+            if (children && children.length > 0) {
+                for (const child of children) {
+                    await connection.query(
+                        `INSERT INTO weekend_booking_children (booking_id, name, age, cell_no, email_id)
+                         VALUES (?, ?, ?, ?, ?)`,
+                        [
+                            bookingId,
+                            child.name,
+                            child.age,
+                            child.cell_no || null,
+                            child.email_id || null
+                        ]
+                    );
+                }
+            }
+
+            await connection.commit();
+            connection.release();
+
+            res.status(201).json({
+                success: true,
+                booking_id: bookingId,
+                message: 'Weekend booking saved successfully'
+            });
+        } catch (err) {
+            await connection.rollback();
+            connection.release();
+            throw err;
+        }
+    } catch (err) {
+        console.error('Error saving weekend booking:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET - Get all weekend bookings
+router.get('/bookings', async (req, res) => {
+    try {
+        const [bookings] = await pool.query(`
+            SELECT wb.*, 
+                   COUNT(wbc.child_id) as actual_children
+            FROM weekend_bookings wb
+            LEFT JOIN weekend_booking_children wbc ON wb.booking_id = wbc.booking_id
+            GROUP BY wb.booking_id
+            ORDER BY wb.created_at DESC
+        `);
+
+        // Get children for each booking
+        for (let booking of bookings) {
+            const [children] = await pool.query(
+                'SELECT * FROM weekend_booking_children WHERE booking_id = ? ORDER BY child_id',
+                [booking.booking_id]
+            );
+            booking.children = children;
+        }
+
+        res.json(bookings);
+    } catch (err) {
+        console.error('Error fetching weekend bookings:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET - Get single weekend booking by ID
+router.get('/bookings/:id', async (req, res) => {
+    try {
+        const [bookings] = await pool.query(
+            'SELECT * FROM weekend_bookings WHERE booking_id = ?',
+            [req.params.id]
+        );
+
+        if (bookings.length === 0) {
+            return res.status(404).json({ message: "Weekend booking not found" });
+        }
+
+        const [children] = await pool.query(
+            'SELECT * FROM weekend_booking_children WHERE booking_id = ? ORDER BY child_id',
+            [req.params.id]
+        );
+
+        res.json({
+            booking: bookings[0],
+            children: children
+        });
+    } catch (err) {
+        console.error('Error fetching weekend booking:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE - Delete weekend booking
+router.delete('/bookings/:id', async (req, res) => {
+    try {
+        const connection = await pool.getConnection();
+        await connection.beginTransaction();
+
+        try {
+            // Delete children first (foreign key constraint)
+            await connection.query(
+                'DELETE FROM weekend_booking_children WHERE booking_id = ?',
+                [req.params.id]
+            );
+
+            // Delete booking
+            const [result] = await connection.query(
+                'DELETE FROM weekend_bookings WHERE booking_id = ?',
+                [req.params.id]
+            );
+
+            if (result.affectedRows === 0) {
+                await connection.rollback();
+                connection.release();
+                return res.status(404).json({ message: "Weekend booking not found" });
+            }
+
+            await connection.commit();
+            connection.release();
+
+            res.json({
+                success: true,
+                message: 'Weekend booking deleted successfully'
+            });
+        } catch (err) {
+            await connection.rollback();
+            connection.release();
+            throw err;
+        }
+    } catch (err) {
+        console.error('Error deleting weekend booking:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
