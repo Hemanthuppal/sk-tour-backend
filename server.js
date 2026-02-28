@@ -132,6 +132,7 @@ const miceRoutes = require('./routes/miceroutes');
 
 const flightspaymentRoutes = require('./routes/flightspayments_v1');
 const bungalowRoutes = require('./routes/bunglow');
+const weekendGatewayRoutes = require('./routes/weekend');
 
 
 
@@ -172,6 +173,10 @@ app.use(
 
 // Serve bungalow uploads
 app.use('/uploads/bungalows', express.static(path.join(__dirname, 'uploads/bungalows')));
+
+// Add this line for weekend gateway uploads
+app.use('/uploads/weekend-gateways', express.static(path.join(__dirname, 'uploads/weekend-gateways')));
+
 
 
 // Add this with your other static middleware
@@ -246,6 +251,7 @@ app.use('/api', flightspaymentRoutes);
 
 // Add this with your other routes
 app.use('/api/bungalows', bungalowRoutes);
+app.use('/api/weekend-gateways', weekendGatewayRoutes);
 
 app.use('/api/offline-hotels', offlineHotelsRoutes);
 
