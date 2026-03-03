@@ -237,23 +237,86 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE bungalow (soft delete)
+// DELETE bungalow (hard delete - remove from table)
 router.delete('/:id', async (req, res) => {
+    const connection = await pool.getConnection();
+    
     try {
-        const [result] = await pool.query(
-            'UPDATE bungalows SET status = 0 WHERE bungalow_id = ?',
-            [req.params.id]
+        await connection.beginTransaction();
+
+        const bungalowId = req.params.id;
+
+        // First check if bungalow exists
+        const [bungalow] = await connection.query(
+            'SELECT bungalow_id FROM bungalows WHERE bungalow_id = ?',
+            [bungalowId]
         );
 
-        if (result.affectedRows === 0) {
+        if (bungalow.length === 0) {
+            await connection.rollback();
+            connection.release();
             return res.status(404).json({ message: "Bungalow not found" });
         }
 
+        // Delete related records in correct order (due to foreign key constraints)
+
+        // 1. Delete booking guests (if any)
+        await connection.query(
+            'DELETE bg FROM booking_guests bg INNER JOIN bungalow_bookings bb ON bg.booking_id = bb.booking_id WHERE bb.bungalow_code IN (SELECT bungalow_code FROM bungalows WHERE bungalow_id = ?)',
+            [bungalowId]
+        );
+
+        // 2. Delete bookings
+        await connection.query(
+            'DELETE FROM bungalow_bookings WHERE bungalow_code IN (SELECT bungalow_code FROM bungalows WHERE bungalow_id = ?)',
+            [bungalowId]
+        );
+
+        // 3. Delete related bungalows
+        await connection.query(
+            'DELETE FROM related_bungalows WHERE bungalow_id = ? OR related_bungalow_id = ?',
+            [bungalowId, bungalowId]
+        );
+
+        // 4. Delete bungalow images and physical files
+        const [images] = await connection.query(
+            'SELECT image_url FROM bungalow_images WHERE bungalow_id = ?',
+            [bungalowId]
+        );
+
+        // Delete physical image files
+        for (const image of images) {
+            const filePath = path.join(__dirname, '..', image.image_url);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+
+        // Delete image records from database
+        await connection.query(
+            'DELETE FROM bungalow_images WHERE bungalow_id = ?',
+            [bungalowId]
+        );
+
+        // 5. Finally delete the bungalow
+        const [result] = await connection.query(
+            'DELETE FROM bungalows WHERE bungalow_id = ?',
+            [bungalowId]
+        );
+
+        await connection.commit();
+        
         res.json({ 
             success: true,
-            message: 'Bungalow deleted successfully' 
+            message: 'Bungalow and all related records deleted successfully' 
         });
+
     } catch (err) {
+        await connection.rollback();
+        console.error('Error deleting bungalow:', err);
         res.status(500).json({ error: err.message });
+    } finally {
+        connection.release();
     }
 });
 

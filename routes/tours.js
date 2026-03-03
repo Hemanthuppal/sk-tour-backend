@@ -16,10 +16,7 @@ router.get('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// GET next tour code - MODIFIED FOR BOTH INDIVIDUAL AND GROUP TOURS
-
-// routes/tours.js
-// GET next tour code - UPDATED FOR BOTH DOMESTIC AND INTERNATIONAL
+// GET next tour code - UPDATED FOR ALL TOUR TYPES INCLUDING SPORTS AND FESTIVAL
 router.get('/next-tour-code', async (req, res) => {
   try {
     // Get the tour_type and is_international from query parameters
@@ -54,9 +51,17 @@ router.get('/next-tour-code', async (req, res) => {
       case 'honeymoon':
         basePrefix = 'H';
         break;
+      // NEW: Sports tour
+      case 'sports':
+        basePrefix = 'P';
+        break;
+      // NEW: Festival tour
+      case 'festival':
+        basePrefix = 'F';
+        break;
       default:
         return res.status(400).json({ 
-          error: 'Invalid tour_type. Valid types: individual, group, ladies, senior, student, honeymoon' 
+          error: 'Invalid tour_type. Valid types: individual, group, ladies, senior, student, honeymoon, sports, festival' 
         });
     }
     
@@ -81,7 +86,7 @@ router.get('/next-tour-code', async (req, res) => {
       nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1;
     }
     
-    // Format with leading zeros (3 digits total for 3 zeros after prefix)
+    // Format with leading zeros (5 digits total)
     const nextCode = `${prefix}${nextNumber.toString().padStart(5, '0')}`;
     
     res.json({ 
@@ -94,8 +99,6 @@ router.get('/next-tour-code', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-
 
 // GET single tour with full details
 router.get('/:id', async (req, res) => {
@@ -135,7 +138,7 @@ router.post('/', async (req, res) => {
     duration_days, 
     overview, 
     base_price_adult, 
-     emi_price, // ← Add this
+    emi_price,
     is_international = 0,
     cost_remarks,
     hotel_remarks,
@@ -143,7 +146,7 @@ router.post('/', async (req, res) => {
     emi_remarks,
     booking_poi_remarks,
     cancellation_remarks,
-     optional_tour_remarks, 
+    optional_tour_remarks, 
     status = 1
   } = req.body;
 
@@ -151,9 +154,9 @@ router.post('/', async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO tours 
       (tour_code, title, tour_type, primary_destination_id, country_id, duration_days, overview,
-       base_price_adult,  emi_price, is_international, cost_remarks, hotel_remarks,
-       transport_remarks, emi_remarks, booking_poi_remarks, cancellation_remarks, optional_tour_remarks,status)
-       VALUES (?, ?, ?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)`,
+       base_price_adult, emi_price, is_international, cost_remarks, hotel_remarks,
+       transport_remarks, emi_remarks, booking_poi_remarks, cancellation_remarks, optional_tour_remarks, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_code, 
         title, 
@@ -163,7 +166,7 @@ router.post('/', async (req, res) => {
         duration_days, 
         overview, 
         base_price_adult, 
-        emi_price, // ← Add this
+        emi_price,
         is_international,
         cost_remarks,
         hotel_remarks,
@@ -181,7 +184,6 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // UPDATE
 router.put('/:id', async (req, res) => {
@@ -260,8 +262,7 @@ router.put('/status/:tour_id', async (req, res) => {
   }
 });
 
-
-// In each route file (departures.js, tour-costs.js, etc.)
+// DELETE
 router.delete('/bulk/:tour_id', async (req, res) => {
   try {
     const tourId = req.params.tour_id;
@@ -272,7 +273,353 @@ router.delete('/bulk/:tour_id', async (req, res) => {
   }
 });
 
+// ==================== SPORTS TOUR ROUTES ====================
+router.get('/tour/full/sports/:tour_id', async (req, res) => {
+  const tourId = req.params.tour_id;
+
+  try {
+    const response = {};
+
+    // 1️⃣ BASIC DETAILS (SPORTS TOUR)
+    const [tourRows] = await pool.query(`
+      SELECT *
+      FROM tours
+      WHERE tour_id = ? AND tour_type = 'sports'
+    `, [tourId]);
+
+    if (tourRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Sports tour not found' });
+    }
+
+    response.basic_details = tourRows[0];
+
+    // 2️⃣ DEPARTURES
+    const [departures] = await pool.query(`SELECT * FROM tour_departures WHERE tour_id = ?`, [tourId]);
+    response.departures = departures;
+
+    // 3️⃣ IMAGES
+    const [images] = await pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId]);
+    response.images = images;
+
+    // 4️⃣ INCLUSIONS
+    const [inclusions] = await pool.query(`SELECT * FROM tour_inclusions WHERE tour_id = ?`, [tourId]);
+    response.inclusions = inclusions;
+
+    // 5️⃣ EXCLUSIONS
+    const [exclusions] = await pool.query(`SELECT * FROM tour_exclusions WHERE tour_id = ?`, [tourId]);
+    response.exclusions = exclusions;
+
+    // 6️⃣ ITINERARY
+    const [itinerary] = await pool.query(`SELECT * FROM tour_itineraries WHERE tour_id = ?`, [tourId]);
+    response.itinerary = itinerary;
+
+    // 7️⃣ COSTS
+    const [costs] = await pool.query(`SELECT * FROM tour_costs WHERE tour_id = ?`, [tourId]);
+    response.costs = costs;
+
+    // 8️⃣ HOTELS
+    const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
+    response.hotels = hotels;
+
+    // ========================
+    // VISA DATA
+    // ========================
+    const [
+      visaDetails,
+      visaForms,
+      visaFees,
+      visaSubmission
+    ] = await Promise.all([
+      pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
+      pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+    ]);
+
+    response.visa_details = visaDetails[0];
+    response.visa_forms = visaForms[0];
+    response.visa_fees = visaFees[0];
+    response.visa_submission = visaSubmission[0];
+
+    // Process visa forms with file URLs
+    const processedVisaForms = visaForms[0].map(form => ({
+      ...form,
+      action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
+      action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
+    }));
+    response.visa_forms = processedVisaForms;
+
+    // 9️⃣ TRANSPORT
+    const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
+    response.transport = transport;
+
+    // 🔟 BOOKING POI
+    const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
+    response.booking_poi = poi;
+
+    // 1️⃣1️⃣ CANCELLATION
+    const [cancellation] = await pool.query(`SELECT * FROM tour_cancellation_policies WHERE tour_id = ?`, [tourId]);
+    response.cancellation_policies = cancellation;
+
+    // 1️⃣2️⃣ INSTRUCTIONS
+    const [instructions] = await pool.query(`SELECT * FROM tour_instructions WHERE tour_id = ?`, [tourId]);
+    response.instructions = instructions;
+
+    // 1️⃣3️⃣ OPTIONAL TOURS
+    const [optionalTours] = await pool.query(`SELECT * FROM optional_tours WHERE tour_id = ?`, [tourId]);
+    response.optional_tours = optionalTours;
+
+    // 1️⃣4️⃣ EMI OPTIONS
+    const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
+    response.emi_options = emi;
+
+    res.json({ 
+      success: true, 
+      tour_type: 'sports', 
+      tour_id: tourId, 
+      ...response 
+    });
+
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== FESTIVAL TOUR ROUTES ====================
+router.get('/tour/full/festival/:tour_id', async (req, res) => {
+  const tourId = req.params.tour_id;
+
+  try {
+    const response = {};
+
+    // 1️⃣ BASIC DETAILS (FESTIVAL TOUR)
+    const [tourRows] = await pool.query(`
+      SELECT *
+      FROM tours
+      WHERE tour_id = ? AND tour_type = 'festival'
+    `, [tourId]);
+
+    if (tourRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Festival tour not found' });
+    }
+
+    response.basic_details = tourRows[0];
+
+    // 2️⃣ DEPARTURES
+    const [departures] = await pool.query(`SELECT * FROM tour_departures WHERE tour_id = ?`, [tourId]);
+    response.departures = departures;
+
+    // 3️⃣ IMAGES
+    const [images] = await pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId]);
+    response.images = images;
+
+    // 4️⃣ INCLUSIONS
+    const [inclusions] = await pool.query(`SELECT * FROM tour_inclusions WHERE tour_id = ?`, [tourId]);
+    response.inclusions = inclusions;
+
+    // 5️⃣ EXCLUSIONS
+    const [exclusions] = await pool.query(`SELECT * FROM tour_exclusions WHERE tour_id = ?`, [tourId]);
+    response.exclusions = exclusions;
+
+    // 6️⃣ ITINERARY
+    const [itinerary] = await pool.query(`SELECT * FROM tour_itineraries WHERE tour_id = ?`, [tourId]);
+    response.itinerary = itinerary;
+
+    // 7️⃣ COSTS
+    const [costs] = await pool.query(`SELECT * FROM tour_costs WHERE tour_id = ?`, [tourId]);
+    response.costs = costs;
+
+    // 8️⃣ HOTELS
+    const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
+    response.hotels = hotels;
+
+    // ========================
+    // VISA DATA
+    // ========================
+    const [
+      visaDetails,
+      visaForms,
+      visaFees,
+      visaSubmission
+    ] = await Promise.all([
+      pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
+      pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
+      pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
+    ]);
+
+    response.visa_details = visaDetails[0];
+    response.visa_forms = visaForms[0];
+    response.visa_fees = visaFees[0];
+    response.visa_submission = visaSubmission[0];
+
+    // Process visa forms with file URLs
+    const processedVisaForms = visaForms[0].map(form => ({
+      ...form,
+      action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
+      action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
+    }));
+    response.visa_forms = processedVisaForms;
+
+    // 9️⃣ TRANSPORT
+    const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
+    response.transport = transport;
+
+    // 🔟 BOOKING POI
+    const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
+    response.booking_poi = poi;
+
+    // 1️⃣1️⃣ CANCELLATION
+    const [cancellation] = await pool.query(`SELECT * FROM tour_cancellation_policies WHERE tour_id = ?`, [tourId]);
+    response.cancellation_policies = cancellation;
+
+    // 1️⃣2️⃣ INSTRUCTIONS
+    const [instructions] = await pool.query(`SELECT * FROM tour_instructions WHERE tour_id = ?`, [tourId]);
+    response.instructions = instructions;
+
+    // 1️⃣3️⃣ OPTIONAL TOURS
+    const [optionalTours] = await pool.query(`SELECT * FROM optional_tours WHERE tour_id = ?`, [tourId]);
+    response.optional_tours = optionalTours;
+
+    // 1️⃣4️⃣ EMI OPTIONS
+    const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
+    response.emi_options = emi;
+
+    res.json({ 
+      success: true, 
+      tour_type: 'festival', 
+      tour_id: tourId, 
+      ...response 
+    });
+
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ==================== ALL SPORTS TOURS ====================
+router.get('/tour/full/all-sports', async (req, res) => {
+  try {
+    // Get query parameter for international filter
+    const isInternational = req.query.is_international;
+    
+    // Build base query
+    let query = `SELECT * FROM tours WHERE tour_type = 'sports'`;
+    let params = [];
+    
+    // Add filter if provided
+    if (isInternational !== undefined) {
+      query += ` AND is_international = ?`;
+      params.push(isInternational === 'true' ? 1 : 0);
+    }
+
+    // 1️⃣ Get Sports tours with optional filter
+    const [tours] = await pool.query(query, params);
+
+    if (tours.length === 0) {
+      return res.json({
+        success: true,
+        tour_type: 'sports',
+        is_international: isInternational,
+        data: []
+      });
+    }
+
+    const result = [];
+
+    // 2️⃣ Loop through each Sports tour
+    for (const tour of tours) {
+      const tourId = tour.tour_id;
+
+      const [images] = await Promise.all([
+        pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
+      ]);
+
+      result.push({
+        basic_details: tour,
+        images: images[0],
+      });
+    }
+
+    res.json({
+      success: true,
+      tour_type: 'sports',
+      is_international: isInternational,
+      total: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// ==================== ALL FESTIVAL TOURS ====================
+router.get('/tour/full/all-festival', async (req, res) => {
+  try {
+    // Get query parameter for international filter
+    const isInternational = req.query.is_international;
+    
+    // Build base query
+    let query = `SELECT * FROM tours WHERE tour_type = 'festival'`;
+    let params = [];
+    
+    // Add filter if provided
+    if (isInternational !== undefined) {
+      query += ` AND is_international = ?`;
+      params.push(isInternational === 'true' ? 1 : 0);
+    }
+
+    // 1️⃣ Get Festival tours with optional filter
+    const [tours] = await pool.query(query, params);
+
+    if (tours.length === 0) {
+      return res.json({
+        success: true,
+        tour_type: 'festival',
+        is_international: isInternational,
+        data: []
+      });
+    }
+
+    const result = [];
+
+    // 2️⃣ Loop through each Festival tour
+    for (const tour of tours) {
+      const tourId = tour.tour_id;
+
+      const [images] = await Promise.all([
+        pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
+      ]);
+
+      result.push({
+        basic_details: tour,
+        images: images[0],
+      });
+    }
+
+    res.json({
+      success: true,
+      tour_type: 'festival',
+      is_international: isInternational,
+      total: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// ==================== EXISTING ROUTES (unchanged) ====================
 router.get('/tour/full/individual/:tour_id', async (req, res) => {
+  // ... existing code ...
   const tourId = req.params.tour_id;
 
   try {
@@ -319,37 +666,37 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
 
-    // 9️⃣ TRANSPORT (INDIVIDUAL = description based)
+    // 9️⃣ TRANSPORT
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
     // ========================
-    // VISA DATA - FIXED SECTION
+    // VISA DATA
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
       visaSubmission
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
       pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_forms = visaForms[0];
     response.visa_fees = visaFees[0];
     response.visa_submission = visaSubmission[0];
 
-    // If you want to include file URLs, process visa forms:
+    // Process visa forms with file URLs
     const processedVisaForms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+    response.visa_forms = processedVisaForms;
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
@@ -383,14 +730,14 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
   }
 });
 
-
 router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
+  // ... existing code (unchanged) ...
   const tourId = req.params.tour_id;
 
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY INDIVIDUAL)
+    // 1️⃣ BASIC DETAILS (ONLY HONEYMOON)
     const [tourRows] = await pool.query(`
       SELECT *
       FROM tours
@@ -398,7 +745,7 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
     `, [tourId]);
 
     if (tourRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Individual tour not found' });
+      return res.status(404).json({ success: false, message: 'Honeymoon tour not found' });
     }
 
     response.basic_details = tourRows[0];
@@ -431,35 +778,35 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
 
-     // ========================
-    // VISA DATA - FIXED SECTION
+    // ========================
+    // VISA DATA
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
       visaSubmission
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
       pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_forms = visaForms[0];
     response.visa_fees = visaFees[0];
     response.visa_submission = visaSubmission[0];
 
-    // If you want to include file URLs, process visa forms:
+    // Process visa forms with file URLs
     const processedVisaForms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+    response.visa_forms = processedVisaForms;
 
-    // 9️⃣ TRANSPORT (INDIVIDUAL = description based)
+    // 9️⃣ TRANSPORT
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
@@ -483,7 +830,12 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
     const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
     response.emi_options = emi;
 
-    res.json({ success: true, tour_type: 'honeymoon', tour_id: tourId, ...response });
+    res.json({ 
+      success: true, 
+      tour_type: 'honeymoon', 
+      tour_id: tourId, 
+      ...response 
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -491,6 +843,7 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
 });
 
 router.get('/tour/full/group/:tour_id', async (req, res) => {
+  // ... existing code (unchanged) ...
   const tourId = req.params.tour_id;
 
   try {
@@ -537,38 +890,37 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
 
-    // 9️⃣ TRANSPORT (GROUP = flight based)
+    // 9️⃣ TRANSPORT
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
-     // ========================
-    // VISA DATA - FIXED SECTION
+    // ========================
+    // VISA DATA
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
       visaSubmission
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
       pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_forms = visaForms[0];
     response.visa_fees = visaFees[0];
     response.visa_submission = visaSubmission[0];
 
-    // If you want to include file URLs, process visa forms:
+    // Process visa forms with file URLs
     const processedVisaForms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
-
+    response.visa_forms = processedVisaForms;
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
@@ -590,7 +942,12 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
     const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
     response.emi_options = emi;
 
-    res.json({ success: true, tour_type: 'Group', tour_id: tourId, ...response });
+    res.json({ 
+      success: true, 
+      tour_type: 'Group', 
+      tour_id: tourId, 
+      ...response 
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -598,12 +955,13 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
 });
 
 router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
+  // ... existing code (unchanged) ...
   const tourId = req.params.tour_id;
 
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY GROUP)
+    // 1️⃣ BASIC DETAILS (ONLY LADIES SPECIAL)
     const [tourRows] = await pool.query(`
       SELECT *
       FROM tours
@@ -611,7 +969,7 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
     `, [tourId]);
 
     if (tourRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Group tour not found' });
+      return res.status(404).json({ success: false, message: 'Ladies Special tour not found' });
     }
 
     response.basic_details = tourRows[0];
@@ -644,41 +1002,37 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
 
-     // ========================
-    // VISA DATA - FIXED SECTION
+    // ========================
+    // VISA DATA
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
       visaSubmission
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
       pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_forms = visaForms[0];
     response.visa_fees = visaFees[0];
     response.visa_submission = visaSubmission[0];
 
-    // If you want to include file URLs, process visa forms:
+    // Process visa forms with file URLs
     const processedVisaForms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+    response.visa_forms = processedVisaForms;
 
-
-
-    // 9️⃣ TRANSPORT (GROUP = flight based)
+    // 9️⃣ TRANSPORT
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
-
-
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
@@ -700,7 +1054,12 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
     const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
     response.emi_options = emi;
 
-    res.json({ success: true, tour_type: 'ladiesspecial', tour_id: tourId, ...response });
+    res.json({ 
+      success: true, 
+      tour_type: 'ladiesspecial', 
+      tour_id: tourId, 
+      ...response 
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -708,12 +1067,13 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
 });
 
 router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
+  // ... existing code (unchanged) ...
   const tourId = req.params.tour_id;
 
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY GROUP)
+    // 1️⃣ BASIC DETAILS (ONLY SENIOR CITIZEN)
     const [tourRows] = await pool.query(`
       SELECT *
       FROM tours
@@ -721,7 +1081,7 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
     `, [tourId]);
 
     if (tourRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Group tour not found' });
+      return res.status(404).json({ success: false, message: 'Senior Citizen tour not found' });
     }
 
     response.basic_details = tourRows[0];
@@ -754,35 +1114,35 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
 
-     // ========================
-    // VISA DATA - FIXED SECTION
+    // ========================
+    // VISA DATA
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
       visaSubmission
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
       pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_forms = visaForms[0];
     response.visa_fees = visaFees[0];
     response.visa_submission = visaSubmission[0];
 
-    // If you want to include file URLs, process visa forms:
+    // Process visa forms with file URLs
     const processedVisaForms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+    response.visa_forms = processedVisaForms;
 
-    // 9️⃣ TRANSPORT (GROUP = flight based)
+    // 9️⃣ TRANSPORT
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
@@ -806,7 +1166,12 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
     const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
     response.emi_options = emi;
 
-    res.json({ success: true, tour_type: 'seniorcitizen', tour_id: tourId, ...response });
+    res.json({ 
+      success: true, 
+      tour_type: 'seniorcitizen', 
+      tour_id: tourId, 
+      ...response 
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -814,12 +1179,13 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
 });
 
 router.get('/tour/full/student/:tour_id', async (req, res) => {
+  // ... existing code (unchanged) ...
   const tourId = req.params.tour_id;
 
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY GROUP)
+    // 1️⃣ BASIC DETAILS (ONLY STUDENT)
     const [tourRows] = await pool.query(`
       SELECT *
       FROM tours
@@ -827,7 +1193,7 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
     `, [tourId]);
 
     if (tourRows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Group tour not found' });
+      return res.status(404).json({ success: false, message: 'Student tour not found' });
     }
 
     response.basic_details = tourRows[0];
@@ -859,35 +1225,36 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
     // 8️⃣ HOTELS
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
- // ========================
-    // VISA DATA - FIXED SECTION
+
+    // ========================
+    // VISA DATA
     // ========================
     const [
       visaDetails,
-      visaForms,  // ADD THIS
+      visaForms,
       visaFees,
       visaSubmission
     ] = await Promise.all([
       pool.query('SELECT * FROM tour_visa_details WHERE tour_id = ? ORDER BY type, visa_id', [tourId]),
-      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]), // ADD THIS
+      pool.query('SELECT * FROM tour_visa_forms WHERE tour_id = ? ORDER BY form_id', [tourId]),
       pool.query('SELECT * FROM tour_visa_fees WHERE tour_id = ? ORDER BY row_order', [tourId]),
       pool.query('SELECT * FROM tour_visa_submission WHERE tour_id = ? ORDER BY row_order', [tourId])
     ]);
 
     response.visa_details = visaDetails[0];
-    response.visa_forms = visaForms[0]; // ADD THIS LINE
+    response.visa_forms = visaForms[0];
     response.visa_fees = visaFees[0];
     response.visa_submission = visaSubmission[0];
 
-    // If you want to include file URLs, process visa forms:
+    // Process visa forms with file URLs
     const processedVisaForms = visaForms[0].map(form => ({
       ...form,
       action1_file_url: form.action1_file ? `/api/visa/file/${form.action1_file}` : null,
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
-    response.visa_forms = processedVisaForms; // Use processed forms if you want URLs
+    response.visa_forms = processedVisaForms;
 
-    // 9️⃣ TRANSPORT (GROUP = flight based)
+    // 9️⃣ TRANSPORT
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
@@ -911,16 +1278,23 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
     const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
     response.emi_options = emi;
 
-    res.json({ success: true, tour_type: 'student', tour_id: tourId, ...response });
+    res.json({ 
+      success: true, 
+      tour_type: 'student', 
+      tour_id: tourId, 
+      ...response 
+    });
 
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
+// ==================== ALL TOURS BY TYPE (with international filter) ====================
 router.get('/tour/full/all-individual', async (req, res) => {
+  // ... existing code (unchanged) ...
   try {
-    // Get query parameter for international filter (true/false/undefined for all)
+    // Get query parameter for international filter
     const isInternational = req.query.is_international;
     
     // Build base query
@@ -940,6 +1314,7 @@ router.get('/tour/full/all-individual', async (req, res) => {
       return res.json({
         success: true,
         tour_type: 'Individual',
+        is_international: isInternational,
         data: []
       });
     }
@@ -950,9 +1325,7 @@ router.get('/tour/full/all-individual', async (req, res) => {
     for (const tour of tours) {
       const tourId = tour.tour_id;
 
-      const [       
-        images,
-      ] = await Promise.all([
+      const [images] = await Promise.all([
         pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId]),
       ]);
 
@@ -978,8 +1351,8 @@ router.get('/tour/full/all-individual', async (req, res) => {
   }
 });
 
-
 router.get('/tour/full/all-group', async (req, res) => {
+  // ... existing code (unchanged) ...
   try {
     // Get query parameter for international filter
     const isInternational = req.query.is_international;
@@ -1012,9 +1385,7 @@ router.get('/tour/full/all-group', async (req, res) => {
     for (const tour of tours) {
       const tourId = tour.tour_id;
 
-      const [   
-        images,
-      ] = await Promise.all([
+      const [images] = await Promise.all([
         pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
       ]);
 
