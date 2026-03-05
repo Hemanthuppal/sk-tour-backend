@@ -368,4 +368,105 @@ router.get('/user-bookings', async (req, res) => {
 });
 
 
+
+
+
+
+// GET all flight charges
+router.get("/flight-charges", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM flight_charges ORDER BY id DESC");
+
+    res.json({
+      success: true,
+      data: rows
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Database error" });
+  }
+});
+
+
+// GET single flight charge
+router.get("/flight-charges/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [rows] = await db.query(
+      "SELECT * FROM flight_charges WHERE id = ?",
+      [id]
+    );
+
+    res.json(rows[0]);
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Database error" });
+  }
+});
+
+
+// POST add flight charge
+router.post("/flight-charges", async (req, res) => {
+  try {
+    const { flight_type, charges, remarks } = req.body;
+
+    const [result] = await db.query(
+      "INSERT INTO flight_charges (flight_type, charges, remarks) VALUES (?, ?, ?)",
+      [flight_type, charges, remarks]
+    );
+
+    res.json({
+      success: true,
+      message: "Flight charge added successfully"
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Insert error" });
+  }
+});
+
+
+// PUT update flight charge
+router.put("/flight-charges/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { flight_type, charges, remarks } = req.body;
+
+    await db.query(
+      "UPDATE flight_charges SET flight_type=?, charges=?, remarks=? WHERE id=?",
+      [flight_type, charges, remarks, id]
+    );
+
+    res.json({
+      success: true,
+      message: "Flight charge updated successfully"
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Update error" });
+  }
+});
+
+
+// DELETE
+router.delete("/flight-charges/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.query("DELETE FROM flight_charges WHERE id=?", [id]);
+
+    res.json({
+      success: true,
+      message: "Flight charge deleted successfully"
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Delete error" });
+  }
+});
+
 module.exports = router;
