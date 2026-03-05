@@ -1411,4 +1411,125 @@ router.get('/tour/full/all-group', async (req, res) => {
   }
 });
 
+
+// Ladies Special Tours
+router.get('/tour/full/all-ladies', async (req, res) => {
+  try {
+    // Get query parameter for international filter
+    const isInternational = req.query.is_international;
+    
+    // Build base query
+    let query = `SELECT * FROM tours WHERE tour_type = 'Ladiesspecial'`;
+    let params = [];
+    
+    // Add filter if provided
+    if (isInternational !== undefined) {
+      query += ` AND is_international = ?`;
+      params.push(isInternational === 'true' ? 1 : 0);
+    }
+
+    // 1️⃣ Get Ladies tours with optional filter
+    const [tours] = await pool.query(query, params);
+
+    if (tours.length === 0) {
+      return res.json({
+        success: true,
+        tour_type: 'Ladies',
+        is_international: isInternational,
+        data: []
+      });
+    }
+
+    const result = [];
+
+    // 2️⃣ Loop through each Ladies tour
+    for (const tour of tours) {
+      const tourId = tour.tour_id;
+
+      const [images] = await Promise.all([
+        pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
+      ]);
+
+      result.push({
+        basic_details: tour,
+        images: images[0],
+      });
+    }
+
+    res.json({
+      success: true,
+      tour_type: 'Ladies',
+      is_international: isInternational,
+      total: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Student Tours
+router.get('/tour/full/all-student', async (req, res) => {
+  try {
+    // Get query parameter for international filter
+    const isInternational = req.query.is_international;
+    
+    // Build base query
+    let query = `SELECT * FROM tours WHERE tour_type = 'Student'`;
+    let params = [];
+    
+    // Add filter if provided
+    if (isInternational !== undefined) {
+      query += ` AND is_international = ?`;
+      params.push(isInternational === 'true' ? 1 : 0);
+    }
+
+    // 1️⃣ Get Student tours with optional filter
+    const [tours] = await pool.query(query, params);
+
+    if (tours.length === 0) {
+      return res.json({
+        success: true,
+        tour_type: 'Student',
+        is_international: isInternational,
+        data: []
+      });
+    }
+
+    const result = [];
+
+    // 2️⃣ Loop through each Student tour
+    for (const tour of tours) {
+      const tourId = tour.tour_id;
+
+      const [images] = await Promise.all([
+        pool.query(`SELECT * FROM tour_images WHERE tour_id = ?`, [tourId])
+      ]);
+
+      result.push({
+        basic_details: tour,
+        images: images[0],
+      });
+    }
+
+    res.json({
+      success: true,
+      tour_type: 'Student',
+      is_international: isInternational,
+      total: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
 module.exports = router;
