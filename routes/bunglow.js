@@ -127,40 +127,31 @@ router.post('/', async (req, res) => {
         bungalow_code,
         name,
         price,
+        bungalow_rate,
         overview,
         inclusive,
         exclusive,
         places_nearby,
         booking_policy,
-        // Tour Cost fields
-        per_pax_twin,
-        per_pax_triple,
-        child_with_bed,
-        child_without_bed,
-        infant,
-        per_pax_single
+        cancellation_policy
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `INSERT INTO bungalows 
-            (bungalow_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            (bungalow_code, name, price, bungalow_rate, overview, inclusive, exclusive, places_nearby, booking_policy, cancellation_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
                 bungalow_code,
                 name,
                 price,
-                per_pax_twin || null,
-                per_pax_triple || null,
-                child_with_bed || null,
-                child_without_bed || null,
-                infant || null,
-                per_pax_single || null,
+                bungalow_rate || '',
                 overview || '',
                 inclusive || '',
                 exclusive || '',
                 places_nearby || '',
-                booking_policy || ''
+                booking_policy || '',
+                cancellation_policy || ''
             ]
         );
 
@@ -181,42 +172,32 @@ router.put('/:id', async (req, res) => {
     const { 
         name,
         price,
+        bungalow_rate,
         overview,
         inclusive,
         exclusive,
         places_nearby,
         booking_policy,
-        status,
-        // Tour Cost fields
-        per_pax_twin,
-        per_pax_triple,
-        child_with_bed,
-        child_without_bed,
-        infant,
-        per_pax_single
+        cancellation_policy,
+        status
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `UPDATE bungalows 
-             SET name = ?, price = ?, per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
-                 child_without_bed = ?, infant = ?, per_pax_single = ?, overview = ?, inclusive = ?, 
-                 exclusive = ?, places_nearby = ?, booking_policy = ?, status = ?
+             SET name = ?, price = ?, bungalow_rate = ?, overview = ?, inclusive = ?, 
+                 exclusive = ?, places_nearby = ?, booking_policy = ?, cancellation_policy = ?, status = ?
              WHERE bungalow_id = ?`,
             [
                 name,
                 price,
-                per_pax_twin || null,
-                per_pax_triple || null,
-                child_with_bed || null,
-                child_without_bed || null,
-                infant || null,
-                per_pax_single || null,
+                bungalow_rate || '',
                 overview || '',
                 inclusive || '',
                 exclusive || '',
                 places_nearby || '',
                 booking_policy || '',
+                cancellation_policy || '',
                 status || 1,
                 bungalowId
             ]
@@ -236,8 +217,7 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// DELETE bungalow (soft delete)
-// DELETE bungalow (hard delete - remove from table)
+// DELETE bungalow (hard delete)
 router.delete('/:id', async (req, res) => {
     const connection = await pool.getConnection();
     
@@ -260,25 +240,31 @@ router.delete('/:id', async (req, res) => {
 
         // Delete related records in correct order (due to foreign key constraints)
 
-        // 1. Delete booking guests (if any)
+        // 1. Delete booking guests
         await connection.query(
             'DELETE bg FROM booking_guests bg INNER JOIN bungalow_bookings bb ON bg.booking_id = bb.booking_id WHERE bb.bungalow_code IN (SELECT bungalow_code FROM bungalows WHERE bungalow_id = ?)',
             [bungalowId]
         );
 
-        // 2. Delete bookings
+        // 2. Delete booking passengers
+        await connection.query(
+            'DELETE bp FROM booking_passengers bp INNER JOIN bungalow_bookings bb ON bp.booking_id = bb.booking_id WHERE bb.bungalow_code IN (SELECT bungalow_code FROM bungalows WHERE bungalow_id = ?)',
+            [bungalowId]
+        );
+
+        // 3. Delete bookings
         await connection.query(
             'DELETE FROM bungalow_bookings WHERE bungalow_code IN (SELECT bungalow_code FROM bungalows WHERE bungalow_id = ?)',
             [bungalowId]
         );
 
-        // 3. Delete related bungalows
+        // 4. Delete related bungalows
         await connection.query(
             'DELETE FROM related_bungalows WHERE bungalow_id = ? OR related_bungalow_id = ?',
             [bungalowId, bungalowId]
         );
 
-        // 4. Delete bungalow images and physical files
+        // 5. Delete bungalow images and physical files
         const [images] = await connection.query(
             'SELECT image_url FROM bungalow_images WHERE bungalow_id = ?',
             [bungalowId]
@@ -298,7 +284,7 @@ router.delete('/:id', async (req, res) => {
             [bungalowId]
         );
 
-        // 5. Finally delete the bungalow
+        // 6. Finally delete the bungalow
         const [result] = await connection.query(
             'DELETE FROM bungalows WHERE bungalow_id = ?',
             [bungalowId]
@@ -433,7 +419,7 @@ router.delete('/images/:imageId', async (req, res) => {
         // Delete from database
         await pool.query('DELETE FROM bungalow_images WHERE image_id = ?', [imageId]);
 
-        // Try to delete physical file (optional)
+        // Try to delete physical file
         const filePath = path.join(__dirname, '..', image[0].image_url);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
@@ -498,7 +484,6 @@ router.post('/related/:bungalowId', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 
 // UPLOAD image for related bungalow
 router.post('/upload-related/:bungalowId', upload.single('image'), async (req, res) => {
@@ -597,7 +582,6 @@ router.put('/related/:relationId', async (req, res) => {
     }
 });
 
-
 // Delete related bungalow
 router.delete('/related/:relationId', async (req, res) => {
     try {
@@ -611,7 +595,6 @@ router.delete('/related/:relationId', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
-
 
 // ==================== BOOKING FORM ROUTES ====================
 
@@ -812,6 +795,13 @@ router.delete('/bookings/:id', async (req, res) => {
                 [req.params.id]
             );
             console.log(`Deleted ${guestsResult.affectedRows} guests`);
+
+            // Delete booking passengers
+            const [passengersResult] = await connection.query(
+                'DELETE FROM booking_passengers WHERE booking_id = ?',
+                [req.params.id]
+            );
+            console.log(`Deleted ${passengersResult.affectedRows} passengers`);
 
             // Delete booking
             const [result] = await connection.query(

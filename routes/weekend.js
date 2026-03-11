@@ -120,30 +120,31 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// CREATE new weekend gateway
+// CREATE new weekend gateway (with tour cost fields)
 router.post('/', async (req, res) => {
     const { 
         gateway_code,
         name,
         price,
-        overview,
-        inclusive,
-        exclusive,
-        places_nearby,
-        booking_policy,
         per_pax_twin,
         per_pax_triple,
         child_with_bed,
         child_without_bed,
         infant,
-        per_pax_single
+        per_pax_single,
+        overview,
+        inclusive,
+        exclusive,
+        places_nearby,
+        booking_policy,
+        cancellation_policy
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `INSERT INTO weekend_gateways 
-            (gateway_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            (gateway_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, cancellation_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
                 gateway_code,
                 name,
@@ -158,7 +159,8 @@ router.post('/', async (req, res) => {
                 inclusive || '',
                 exclusive || '',
                 places_nearby || '',
-                booking_policy || ''
+                booking_policy || '',
+                cancellation_policy || ''
             ]
         );
 
@@ -173,24 +175,25 @@ router.post('/', async (req, res) => {
     }
 });
 
-// UPDATE weekend gateway
+// UPDATE weekend gateway (with tour cost fields)
 router.put('/:id', async (req, res) => {
     const gatewayId = req.params.id;
     const { 
         name,
         price,
-        overview,
-        inclusive,
-        exclusive,
-        places_nearby,
-        booking_policy,
-        status,
         per_pax_twin,
         per_pax_triple,
         child_with_bed,
         child_without_bed,
         infant,
-        per_pax_single
+        per_pax_single,
+        overview,
+        inclusive,
+        exclusive,
+        places_nearby,
+        booking_policy,
+        cancellation_policy,
+        status
     } = req.body;
 
     try {
@@ -198,7 +201,7 @@ router.put('/:id', async (req, res) => {
             `UPDATE weekend_gateways 
              SET name = ?, price = ?, per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
                  child_without_bed = ?, infant = ?, per_pax_single = ?, overview = ?, inclusive = ?, 
-                 exclusive = ?, places_nearby = ?, booking_policy = ?, status = ?
+                 exclusive = ?, places_nearby = ?, booking_policy = ?, cancellation_policy = ?, status = ?
              WHERE gateway_id = ?`,
             [
                 name,
@@ -214,6 +217,7 @@ router.put('/:id', async (req, res) => {
                 exclusive || '',
                 places_nearby || '',
                 booking_policy || '',
+                cancellation_policy || '',
                 status || 1,
                 gatewayId
             ]
@@ -233,24 +237,86 @@ router.put('/:id', async (req, res) => {
     }
 });
 
-// DELETE weekend gateway (soft delete)
+// DELETE weekend gateway (hard delete)
 router.delete('/:id', async (req, res) => {
+    const connection = await pool.getConnection();
+    
     try {
-        const [result] = await pool.query(
-            'UPDATE weekend_gateways SET status = 0 WHERE gateway_id = ?',
-            [req.params.id]
+        await connection.beginTransaction();
+
+        const gatewayId = req.params.id;
+
+        // First check if gateway exists
+        const [gateway] = await connection.query(
+            'SELECT gateway_id FROM weekend_gateways WHERE gateway_id = ?',
+            [gatewayId]
         );
 
-        if (result.affectedRows === 0) {
+        if (gateway.length === 0) {
+            await connection.rollback();
+            connection.release();
             return res.status(404).json({ message: "Weekend Gateway not found" });
         }
 
+        // Delete related records in correct order
+
+        // 1. Delete weekend booking children (if any)
+        await connection.query(
+            'DELETE wbc FROM weekend_booking_children wbc INNER JOIN weekend_bookings wb ON wbc.booking_id = wb.booking_id WHERE wb.property_name IN (SELECT name FROM weekend_gateways WHERE gateway_id = ?)',
+            [gatewayId]
+        );
+
+        // 2. Delete weekend bookings
+        await connection.query(
+            'DELETE FROM weekend_bookings WHERE property_name IN (SELECT name FROM weekend_gateways WHERE gateway_id = ?)',
+            [gatewayId]
+        );
+
+        // 3. Delete related weekend gateways
+        await connection.query(
+            'DELETE FROM related_weekend_gateways WHERE gateway_id = ? OR related_gateway_id = ?',
+            [gatewayId, gatewayId]
+        );
+
+        // 4. Delete gateway images and physical files
+        const [images] = await connection.query(
+            'SELECT image_url FROM weekend_gateway_images WHERE gateway_id = ?',
+            [gatewayId]
+        );
+
+        // Delete physical image files
+        for (const image of images) {
+            const filePath = path.join(__dirname, '..', image.image_url);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+
+        // Delete image records from database
+        await connection.query(
+            'DELETE FROM weekend_gateway_images WHERE gateway_id = ?',
+            [gatewayId]
+        );
+
+        // 5. Finally delete the weekend gateway
+        const [result] = await connection.query(
+            'DELETE FROM weekend_gateways WHERE gateway_id = ?',
+            [gatewayId]
+        );
+
+        await connection.commit();
+        
         res.json({ 
             success: true,
-            message: 'Weekend Gateway deleted successfully' 
+            message: 'Weekend Gateway and all related records deleted successfully' 
         });
+
     } catch (err) {
+        await connection.rollback();
+        console.error('Error deleting weekend gateway:', err);
         res.status(500).json({ error: err.message });
+    } finally {
+        connection.release();
     }
 });
 
@@ -530,8 +596,6 @@ router.delete('/related/:relationId', async (req, res) => {
     }
 });
 
-
-
 // ==================== WEEKEND BOOKING FORM ROUTES ====================
 
 // POST - Save weekend booking form data
@@ -675,86 +739,51 @@ router.get('/bookings/:id', async (req, res) => {
 });
 
 // DELETE - Delete weekend booking
-// DELETE weekend gateway (hard delete - remove from table)
-router.delete('/:id', async (req, res) => {
-    const connection = await pool.getConnection();
-    
+router.delete('/bookings/:id', async (req, res) => {
     try {
+        const connection = await pool.getConnection();
         await connection.beginTransaction();
 
-        const gatewayId = req.params.id;
+        try {
+            // First check if booking exists
+            const [check] = await connection.query(
+                'SELECT booking_id FROM weekend_bookings WHERE booking_id = ?',
+                [req.params.id]
+            );
 
-        // First check if gateway exists
-        const [gateway] = await connection.query(
-            'SELECT gateway_id FROM weekend_gateways WHERE gateway_id = ?',
-            [gatewayId]
-        );
+            if (check.length === 0) {
+                await connection.rollback();
+                connection.release();
+                return res.status(404).json({ message: "Weekend booking not found" });
+            }
 
-        if (gateway.length === 0) {
+            // Delete children first (foreign key constraint)
+            await connection.query(
+                'DELETE FROM weekend_booking_children WHERE booking_id = ?',
+                [req.params.id]
+            );
+
+            // Delete booking
+            await connection.query(
+                'DELETE FROM weekend_bookings WHERE booking_id = ?',
+                [req.params.id]
+            );
+
+            await connection.commit();
+            connection.release();
+
+            res.json({
+                success: true,
+                message: 'Weekend booking deleted successfully'
+            });
+        } catch (err) {
             await connection.rollback();
             connection.release();
-            return res.status(404).json({ message: "Weekend Gateway not found" });
+            throw err;
         }
-
-        // Delete related records in correct order (due to foreign key constraints)
-
-        // 1. Delete weekend booking children (if any)
-        await connection.query(
-            'DELETE wbc FROM weekend_booking_children wbc INNER JOIN weekend_bookings wb ON wbc.booking_id = wb.booking_id WHERE wb.property_name IN (SELECT name FROM weekend_gateways WHERE gateway_id = ?)',
-            [gatewayId]
-        );
-
-        // 2. Delete weekend bookings
-        await connection.query(
-            'DELETE FROM weekend_bookings WHERE property_name IN (SELECT name FROM weekend_gateways WHERE gateway_id = ?)',
-            [gatewayId]
-        );
-
-        // 3. Delete related weekend gateways
-        await connection.query(
-            'DELETE FROM related_weekend_gateways WHERE gateway_id = ? OR related_gateway_id = ?',
-            [gatewayId, gatewayId]
-        );
-
-        // 4. Delete gateway images and physical files
-        const [images] = await connection.query(
-            'SELECT image_url FROM weekend_gateway_images WHERE gateway_id = ?',
-            [gatewayId]
-        );
-
-        // Delete physical image files
-        for (const image of images) {
-            const filePath = path.join(__dirname, '..', image.image_url);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
-            }
-        }
-
-        // Delete image records from database
-        await connection.query(
-            'DELETE FROM weekend_gateway_images WHERE gateway_id = ?',
-            [gatewayId]
-        );
-
-        // 5. Finally delete the weekend gateway
-        const [result] = await connection.query(
-            'DELETE FROM weekend_gateways WHERE gateway_id = ?',
-            [gatewayId]
-        );
-
-        await connection.commit();
-        
-        res.json({ 
-            success: true,
-            message: 'Weekend Gateway and all related records deleted successfully' 
-        });
-
     } catch (err) {
-        await connection.rollback();
-        console.error('Error deleting weekend gateway:', err);
+        console.error('Error deleting weekend booking:', err);
         res.status(500).json({ error: err.message });
-    } finally {
-        connection.release();
     }
 });
 

@@ -127,39 +127,31 @@ router.post('/', async (req, res) => {
         picnic_code,
         name,
         price,
+        property_rate,
         overview,
         inclusive,
         exclusive,
         places_nearby,
         booking_policy,
-        per_pax_twin,
-        per_pax_triple,
-        child_with_bed,
-        child_without_bed,
-        infant,
-        per_pax_single
+        cancellation_policy
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `INSERT INTO one_day_picnic 
-            (picnic_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            (picnic_code, name, price, property_rate, overview, inclusive, exclusive, places_nearby, booking_policy, cancellation_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
                 picnic_code,
                 name,
                 price,
-                per_pax_twin || null,
-                per_pax_triple || null,
-                child_with_bed || null,
-                child_without_bed || null,
-                infant || null,
-                per_pax_single || null,
+                property_rate || '',
                 overview || '',
                 inclusive || '',
                 exclusive || '',
                 places_nearby || '',
-                booking_policy || ''
+                booking_policy || '',
+                cancellation_policy || ''
             ]
         );
 
@@ -180,41 +172,32 @@ router.put('/:id', async (req, res) => {
     const { 
         name,
         price,
+        property_rate,
         overview,
         inclusive,
         exclusive,
         places_nearby,
         booking_policy,
-        status,
-        per_pax_twin,
-        per_pax_triple,
-        child_with_bed,
-        child_without_bed,
-        infant,
-        per_pax_single
+        cancellation_policy,
+        status
     } = req.body;
 
     try {
         const [result] = await pool.query(
             `UPDATE one_day_picnic 
-             SET name = ?, price = ?, per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
-                 child_without_bed = ?, infant = ?, per_pax_single = ?, overview = ?, inclusive = ?, 
-                 exclusive = ?, places_nearby = ?, booking_policy = ?, status = ?
+             SET name = ?, price = ?, property_rate = ?, overview = ?, inclusive = ?, 
+                 exclusive = ?, places_nearby = ?, booking_policy = ?, cancellation_policy = ?, status = ?
              WHERE picnic_id = ?`,
             [
                 name,
                 price,
-                per_pax_twin || null,
-                per_pax_triple || null,
-                child_with_bed || null,
-                child_without_bed || null,
-                infant || null,
-                per_pax_single || null,
+                property_rate || '',
                 overview || '',
                 inclusive || '',
                 exclusive || '',
                 places_nearby || '',
                 booking_policy || '',
+                cancellation_policy || '',
                 status || 1,
                 picnicId
             ]
