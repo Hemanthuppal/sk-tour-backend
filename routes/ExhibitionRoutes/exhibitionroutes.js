@@ -35,7 +35,7 @@ const upload = multer({
 });
 
 // Helper function to handle multiple file uploads
-const uploadMultiple = upload.array('images', 10); // Allow up to 10 images
+const uploadMultiple = upload.array('images', 10);
 
 // ========== ABOUT EXHIBITION ROUTES (unchanged) ==========
 router.get('/about', async (req, res) => {
@@ -168,13 +168,11 @@ router.post('/about', (req, res) => {
 // Get all domestic exhibitions with their cities
 router.get('/domestic', async (req, res) => {
   try {
-    // Get all domestic exhibitions
     const [exhibitions] = await db.query(`
       SELECT * FROM domestic_exhibition 
       ORDER BY created_at DESC
     `);
     
-    // For each exhibition, get its cities with images and prices
     for (let exhibition of exhibitions) {
       const [cities] = await db.query(
         'SELECT id, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ? ORDER BY created_at',
@@ -206,7 +204,6 @@ router.get('/domestic/:id', async (req, res) => {
     
     const exhibition = exhibitions[0];
     
-    // Get cities for this exhibition
     const [cities] = await db.query(
       'SELECT id, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ? ORDER BY created_at',
       [id]
@@ -221,7 +218,7 @@ router.get('/domestic/:id', async (req, res) => {
   }
 });
 
-// Add new domestic exhibition with multiple cities
+// Add new domestic exhibition (with optional cities)
 router.post('/domestic', (req, res) => {
   uploadMultiple(req, res, async (err) => {
     if (err) {
@@ -237,28 +234,35 @@ router.post('/domestic', (req, res) => {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
-      // Parse the JSON strings
+      // Parse the JSON strings if they exist
       let cityNamesArray = [];
       let pricesArray = [];
       
-      try {
-        cityNamesArray = JSON.parse(cityNames || '[]');
-        pricesArray = JSON.parse(prices || '[]');
-      } catch (e) {
-        return res.status(400).json({ error: 'Invalid data format' });
+      if (cityNames) {
+        try {
+          cityNamesArray = JSON.parse(cityNames);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid city names format' });
+        }
       }
       
-      // Validate we have matching data
-      if (cityNamesArray.length === 0) {
-        return res.status(400).json({ error: 'At least one city is required' });
+      if (prices) {
+        try {
+          pricesArray = JSON.parse(prices);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid prices format' });
+        }
       }
       
-      if (cityNamesArray.length !== pricesArray.length) {
-        return res.status(400).json({ error: 'Mismatch between cities and prices' });
-      }
-      
-      if (cityNamesArray.length !== files.length) {
-        return res.status(400).json({ error: 'Please upload an image for each city' });
+      // Validate if cities are provided
+      if (cityNamesArray.length > 0) {
+        if (cityNamesArray.length !== pricesArray.length) {
+          return res.status(400).json({ error: 'Mismatch between cities and prices' });
+        }
+        
+        if (cityNamesArray.length !== files.length) {
+          return res.status(400).json({ error: 'Please upload an image for each city' });
+        }
       }
       
       connection = await db.getConnection();
@@ -272,26 +276,28 @@ router.post('/domestic', (req, res) => {
       
       const exhibitionId = result.insertId;
       
-      // Insert each city with its image and price
-      for (let i = 0; i < cityNamesArray.length; i++) {
-        const cityName = cityNamesArray[i].trim();
-        const price = pricesArray[i];
-        const imageFile = files[i];
-        
-        if (!cityName) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'City name cannot be empty' });
+      // Insert cities only if they exist
+      if (cityNamesArray.length > 0) {
+        for (let i = 0; i < cityNamesArray.length; i++) {
+          const cityName = cityNamesArray[i]?.trim();
+          const price = pricesArray[i];
+          const imageFile = files[i];
+          
+          if (!cityName) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'City name cannot be empty' });
+          }
+          
+          if (!price || price <= 0) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Valid price is required for each city' });
+          }
+          
+          await connection.query(
+            'INSERT INTO domestic_exhibition_cities (domestic_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+            [exhibitionId, cityName, imageFile.filename, price]
+          );
         }
-        
-        if (!price || price <= 0) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Valid price is required for each city' });
-        }
-        
-        await connection.query(
-          'INSERT INTO domestic_exhibition_cities (domestic_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
-          [exhibitionId, cityName, imageFile.filename, price]
-        );
       }
       
       await connection.commit();
@@ -339,25 +345,28 @@ router.put('/domestic/:id', (req, res) => {
       }
       
       // Parse the JSON strings
-      let cityNamesArray = JSON.parse(cityNames || '[]');
-      let pricesArray = JSON.parse(prices || '[]');
-      let existingCityIdsArray = JSON.parse(existingCityIds || '[]');
-      let existingImagesArray = JSON.parse(existingImages || '[]');
+      let cityNamesArray = [];
+      let pricesArray = [];
+      let existingCityIdsArray = [];
+      let existingImagesArray = [];
       
-      // Validate we have matching data
-      if (cityNamesArray.length === 0) {
-        return res.status(400).json({ error: 'At least one city is required' });
-      }
+      if (cityNames) cityNamesArray = JSON.parse(cityNames || '[]');
+      if (prices) pricesArray = JSON.parse(prices || '[]');
+      if (existingCityIds) existingCityIdsArray = JSON.parse(existingCityIds || '[]');
+      if (existingImages) existingImagesArray = JSON.parse(existingImages || '[]');
       
-      if (cityNamesArray.length !== pricesArray.length) {
-        return res.status(400).json({ error: 'Mismatch between cities and prices' });
-      }
-      
-      const totalCities = cityNamesArray.length;
-      const totalImages = existingImagesArray.length + files.length;
-      
-      if (totalCities !== totalImages) {
-        return res.status(400).json({ error: 'Please ensure each city has an image' });
+      // Validate if cities are provided
+      if (cityNamesArray.length > 0) {
+        if (cityNamesArray.length !== pricesArray.length) {
+          return res.status(400).json({ error: 'Mismatch between cities and prices' });
+        }
+        
+        const totalCities = cityNamesArray.length;
+        const totalImages = existingImagesArray.length + files.length;
+        
+        if (totalCities !== totalImages) {
+          return res.status(400).json({ error: 'Please ensure each city has an image' });
+        }
       }
       
       connection = await db.getConnection();
@@ -378,54 +387,54 @@ router.put('/domestic/:id', (req, res) => {
       // Delete old city records
       await connection.query('DELETE FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?', [id]);
       
-      // Insert updated cities
-      let fileIndex = 0;
-      let existingImageIndex = 0;
-      
-      for (let i = 0; i < cityNamesArray.length; i++) {
-        const cityName = cityNamesArray[i].trim();
-        const price = pricesArray[i];
+      // Insert updated cities only if there are any
+      if (cityNamesArray.length > 0) {
+        let fileIndex = 0;
+        let existingImageIndex = 0;
         
-        if (!cityName) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'City name cannot be empty' });
+        for (let i = 0; i < cityNamesArray.length; i++) {
+          const cityName = cityNamesArray[i]?.trim();
+          const price = pricesArray[i];
+          
+          if (!cityName) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'City name cannot be empty' });
+          }
+          
+          if (!price || price <= 0) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Valid price is required for each city' });
+          }
+          
+          let imageFilename;
+          
+          // Check if this city is using an existing image or a new uploaded image
+          if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
+            imageFilename = existingImagesArray[existingImageIndex];
+            existingImageIndex++;
+          } else if (files.length > 0 && fileIndex < files.length) {
+            imageFilename = files[fileIndex].filename;
+            fileIndex++;
+          } else {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Image missing for city: ' + cityName });
+          }
+          
+          await connection.query(
+            'INSERT INTO domestic_exhibition_cities (domestic_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+            [id, cityName, imageFilename, price]
+          );
         }
         
-        if (!price || price <= 0) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Valid price is required for each city' });
-        }
+        // Delete old image files that are no longer used
+        const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
         
-        let imageFilename;
-        
-        // Check if this city is using an existing image or a new uploaded image
-        if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
-          // Use existing image
-          imageFilename = existingImagesArray[existingImageIndex];
-          existingImageIndex++;
-        } else if (files.length > 0 && fileIndex < files.length) {
-          // Use new uploaded image
-          imageFilename = files[fileIndex].filename;
-          fileIndex++;
-        } else {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Image missing for city: ' + cityName });
-        }
-        
-        await connection.query(
-          'INSERT INTO domestic_exhibition_cities (domestic_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
-          [id, cityName, imageFilename, price]
-        );
-      }
-      
-      // Delete old image files that are no longer used
-      const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
-      
-      for (let oldCity of oldCities) {
-        if (!newImageFilenames.includes(oldCity.image)) {
-          const oldFilePath = path.join('uploads/exhibition/', oldCity.image);
-          if (fs.existsSync(oldFilePath)) {
-            fs.unlinkSync(oldFilePath);
+        for (let oldCity of oldCities) {
+          if (!newImageFilenames.includes(oldCity.image)) {
+            const oldFilePath = path.join('uploads/exhibition/', oldCity.image);
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
           }
         }
       }
@@ -545,7 +554,7 @@ router.get('/international/:id', async (req, res) => {
   }
 });
 
-// Add new international exhibition with multiple cities
+// Add new international exhibition (with optional cities)
 router.post('/international', (req, res) => {
   uploadMultiple(req, res, async (err) => {
     if (err) {
@@ -561,19 +570,33 @@ router.post('/international', (req, res) => {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
-      let cityNamesArray = JSON.parse(cityNames || '[]');
-      let pricesArray = JSON.parse(prices || '[]');
+      let cityNamesArray = [];
+      let pricesArray = [];
       
-      if (cityNamesArray.length === 0) {
-        return res.status(400).json({ error: 'At least one city is required' });
+      if (cityNames) {
+        try {
+          cityNamesArray = JSON.parse(cityNames);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid city names format' });
+        }
       }
       
-      if (cityNamesArray.length !== pricesArray.length) {
-        return res.status(400).json({ error: 'Mismatch between cities and prices' });
+      if (prices) {
+        try {
+          pricesArray = JSON.parse(prices);
+        } catch (e) {
+          return res.status(400).json({ error: 'Invalid prices format' });
+        }
       }
       
-      if (cityNamesArray.length !== files.length) {
-        return res.status(400).json({ error: 'Please upload an image for each city' });
+      if (cityNamesArray.length > 0) {
+        if (cityNamesArray.length !== pricesArray.length) {
+          return res.status(400).json({ error: 'Mismatch between cities and prices' });
+        }
+        
+        if (cityNamesArray.length !== files.length) {
+          return res.status(400).json({ error: 'Please upload an image for each city' });
+        }
       }
       
       connection = await db.getConnection();
@@ -586,25 +609,27 @@ router.post('/international', (req, res) => {
       
       const exhibitionId = result.insertId;
       
-      for (let i = 0; i < cityNamesArray.length; i++) {
-        const cityName = cityNamesArray[i].trim();
-        const price = pricesArray[i];
-        const imageFile = files[i];
-        
-        if (!cityName) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'City name cannot be empty' });
+      if (cityNamesArray.length > 0) {
+        for (let i = 0; i < cityNamesArray.length; i++) {
+          const cityName = cityNamesArray[i]?.trim();
+          const price = pricesArray[i];
+          const imageFile = files[i];
+          
+          if (!cityName) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'City name cannot be empty' });
+          }
+          
+          if (!price || price <= 0) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Valid price is required for each city' });
+          }
+          
+          await connection.query(
+            'INSERT INTO international_exhibition_cities (international_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+            [exhibitionId, cityName, imageFile.filename, price]
+          );
         }
-        
-        if (!price || price <= 0) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Valid price is required for each city' });
-        }
-        
-        await connection.query(
-          'INSERT INTO international_exhibition_cities (international_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
-          [exhibitionId, cityName, imageFile.filename, price]
-        );
       }
       
       await connection.commit();
@@ -650,23 +675,25 @@ router.put('/international/:id', (req, res) => {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
-      let cityNamesArray = JSON.parse(cityNames || '[]');
-      let pricesArray = JSON.parse(prices || '[]');
-      let existingImagesArray = JSON.parse(existingImages || '[]');
+      let cityNamesArray = [];
+      let pricesArray = [];
+      let existingImagesArray = [];
       
-      if (cityNamesArray.length === 0) {
-        return res.status(400).json({ error: 'At least one city is required' });
-      }
+      if (cityNames) cityNamesArray = JSON.parse(cityNames || '[]');
+      if (prices) pricesArray = JSON.parse(prices || '[]');
+      if (existingImages) existingImagesArray = JSON.parse(existingImages || '[]');
       
-      if (cityNamesArray.length !== pricesArray.length) {
-        return res.status(400).json({ error: 'Mismatch between cities and prices' });
-      }
-      
-      const totalCities = cityNamesArray.length;
-      const totalImages = existingImagesArray.length + files.length;
-      
-      if (totalCities !== totalImages) {
-        return res.status(400).json({ error: 'Please ensure each city has an image' });
+      if (cityNamesArray.length > 0) {
+        if (cityNamesArray.length !== pricesArray.length) {
+          return res.status(400).json({ error: 'Mismatch between cities and prices' });
+        }
+        
+        const totalCities = cityNamesArray.length;
+        const totalImages = existingImagesArray.length + files.length;
+        
+        if (totalCities !== totalImages) {
+          return res.status(400).json({ error: 'Please ensure each city has an image' });
+        }
       }
       
       connection = await db.getConnection();
@@ -684,49 +711,51 @@ router.put('/international/:id', (req, res) => {
       
       await connection.query('DELETE FROM international_exhibition_cities WHERE international_exhibition_id = ?', [id]);
       
-      let fileIndex = 0;
-      let existingImageIndex = 0;
-      
-      for (let i = 0; i < cityNamesArray.length; i++) {
-        const cityName = cityNamesArray[i].trim();
-        const price = pricesArray[i];
+      if (cityNamesArray.length > 0) {
+        let fileIndex = 0;
+        let existingImageIndex = 0;
         
-        if (!cityName) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'City name cannot be empty' });
+        for (let i = 0; i < cityNamesArray.length; i++) {
+          const cityName = cityNamesArray[i]?.trim();
+          const price = pricesArray[i];
+          
+          if (!cityName) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'City name cannot be empty' });
+          }
+          
+          if (!price || price <= 0) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Valid price is required for each city' });
+          }
+          
+          let imageFilename;
+          
+          if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
+            imageFilename = existingImagesArray[existingImageIndex];
+            existingImageIndex++;
+          } else if (files.length > 0 && fileIndex < files.length) {
+            imageFilename = files[fileIndex].filename;
+            fileIndex++;
+          } else {
+            await connection.rollback();
+            return res.status(400).json({ error: 'Image missing for city: ' + cityName });
+          }
+          
+          await connection.query(
+            'INSERT INTO international_exhibition_cities (international_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+            [id, cityName, imageFilename, price]
+          );
         }
         
-        if (!price || price <= 0) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Valid price is required for each city' });
-        }
+        const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
         
-        let imageFilename;
-        
-        if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
-          imageFilename = existingImagesArray[existingImageIndex];
-          existingImageIndex++;
-        } else if (files.length > 0 && fileIndex < files.length) {
-          imageFilename = files[fileIndex].filename;
-          fileIndex++;
-        } else {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Image missing for city: ' + cityName });
-        }
-        
-        await connection.query(
-          'INSERT INTO international_exhibition_cities (international_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
-          [id, cityName, imageFilename, price]
-        );
-      }
-      
-      const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
-      
-      for (let oldCity of oldCities) {
-        if (!newImageFilenames.includes(oldCity.image)) {
-          const oldFilePath = path.join('uploads/exhibition/', oldCity.image);
-          if (fs.existsSync(oldFilePath)) {
-            fs.unlinkSync(oldFilePath);
+        for (let oldCity of oldCities) {
+          if (!newImageFilenames.includes(oldCity.image)) {
+            const oldFilePath = path.join('uploads/exhibition/', oldCity.image);
+            if (fs.existsSync(oldFilePath)) {
+              fs.unlinkSync(oldFilePath);
+            }
           }
         }
       }
@@ -784,6 +813,72 @@ router.delete('/international/:id', async (req, res) => {
     res.status(500).json({ error: 'Error deleting international exhibition' });
   } finally {
     if (connection) connection.release();
+  }
+});
+
+// Bulk add domestic exhibitions (simple categories without cities)
+router.post('/domestic/bulk', async (req, res) => {
+  try {
+    const { countries } = req.body;
+    
+    if (!Array.isArray(countries) || countries.length === 0) {
+      return res.status(400).json({ error: 'Countries array is required' });
+    }
+    
+    const validCountries = countries
+      .filter(country => country && country.trim() !== '')
+      .map(country => country.trim());
+    
+    if (validCountries.length === 0) {
+      return res.status(400).json({ error: 'No valid country names provided' });
+    }
+    
+    const values = validCountries.map(country => [country]);
+    const [result] = await db.query(
+      'INSERT IGNORE INTO domestic_exhibition (country_name) VALUES ?',
+      [values]
+    );
+    
+    res.json({ 
+      message: `Added ${result.affectedRows} domestic categories successfully`,
+      added: result.affectedRows
+    });
+  } catch (error) {
+    console.error('Error adding bulk domestic exhibitions:', error);
+    res.status(500).json({ error: 'Error adding domestic exhibitions' });
+  }
+});
+
+// Bulk add international exhibitions (simple categories without cities)
+router.post('/international/bulk', async (req, res) => {
+  try {
+    const { countries } = req.body;
+    
+    if (!Array.isArray(countries) || countries.length === 0) {
+      return res.status(400).json({ error: 'Countries array is required' });
+    }
+    
+    const validCountries = countries
+      .filter(country => country && country.trim() !== '')
+      .map(country => country.trim());
+    
+    if (validCountries.length === 0) {
+      return res.status(400).json({ error: 'No valid country names provided' });
+    }
+    
+    const values = validCountries.map(country => [country]);
+    const [result] = await db.query(
+      'INSERT IGNORE INTO international_exhibition (country_name) VALUES ?',
+      [values]
+    );
+    
+    res.json({ 
+      message: `Added ${result.affectedRows} international categories successfully`,
+      added: result.affectedRows
+    });
+  } catch (error) {
+    console.error('Error adding bulk international exhibitions:', error);
+    res.status(500).json({ error: 'Error adding international exhibitions' });
   }
 });
 
