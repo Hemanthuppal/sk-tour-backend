@@ -8,7 +8,8 @@ const fs = require('fs');
 // Configure multer for image upload
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        const uploadDir = 'uploads/weekend-gateways';
+        const uploadDir = 'uploads/one-day-picnic';
+        // Create directory if it doesn't exist
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -16,13 +17,13 @@ const storage = multer.diskStorage({
     },
     filename: function (req, file, cb) {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'gateway-' + uniqueSuffix + path.extname(file.originalname));
+        cb(null, 'picnic-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (req, file, cb) => {
         const allowedTypes = /jpeg|jpg|png|webp/;
         const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
@@ -36,23 +37,23 @@ const upload = multer({
     }
 });
 
-// GET next gateway code (WG0001, WG0002, etc.)
-router.get('/next-gateway-code', async (req, res) => {
+// GET next picnic code (PICNIC0001, PICNIC0002, etc.)
+router.get('/next-picnic-code', async (req, res) => {
     try {
-        const prefix = 'WG';
+        const prefix = 'PICNIC';
         
         const [rows] = await pool.query(`
-            SELECT gateway_code 
-            FROM weekend_gateways 
-            WHERE gateway_code LIKE ? 
-            ORDER BY gateway_code DESC 
+            SELECT picnic_code 
+            FROM one_day_picnic 
+            WHERE picnic_code LIKE ? 
+            ORDER BY picnic_code DESC 
             LIMIT 1
         `, [`${prefix}%`]);
         
         let nextNumber = 1;
         
-        if (rows.length > 0 && rows[0].gateway_code) {
-            const lastCode = rows[0].gateway_code;
+        if (rows.length > 0 && rows[0].picnic_code) {
+            const lastCode = rows[0].picnic_code;
             const lastNumber = parseInt(lastCode.replace(prefix, ''));
             nextNumber = isNaN(lastNumber) ? 1 : lastNumber + 1;
         }
@@ -60,7 +61,7 @@ router.get('/next-gateway-code', async (req, res) => {
         const nextCode = `${prefix}${nextNumber.toString().padStart(4, '0')}`;
         
         res.json({ 
-            next_gateway_code: nextCode,
+            next_picnic_code: nextCode,
             prefix: prefix
         });
     } catch (err) {
@@ -68,16 +69,16 @@ router.get('/next-gateway-code', async (req, res) => {
     }
 });
 
-// GET all weekend gateways (for listing)
+// GET all one day picnics (for listing - 1st image)
 router.get('/', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT w.*, 
-                   (SELECT image_url FROM weekend_gateway_images 
-                    WHERE gateway_id = w.gateway_id AND is_main = TRUE LIMIT 1) as main_image
-            FROM weekend_gateways w
-            WHERE w.status = 1
-            ORDER BY w.gateway_id DESC
+            SELECT p.*, 
+                   (SELECT image_url FROM one_day_picnic_images 
+                    WHERE picnic_id = p.picnic_id AND is_main = TRUE LIMIT 1) as main_image
+            FROM one_day_picnic p
+            WHERE p.status = 1
+            ORDER BY p.picnic_id DESC
         `);
         res.json(rows);
     } catch (err) {
@@ -85,53 +86,48 @@ router.get('/', async (req, res) => {
     }
 });
 
-// GET single weekend gateway with full details
+// GET single one day picnic with full details
 router.get('/:id', async (req, res) => {
     try {
-        const [gateway] = await pool.query(
-            'SELECT * FROM weekend_gateways WHERE gateway_id = ?', 
+        const [picnic] = await pool.query(
+            'SELECT * FROM one_day_picnic WHERE picnic_id = ?', 
             [req.params.id]
         );
         
-        if (!gateway.length) {
-            return res.status(404).json({ message: "Weekend Gateway not found" });
+        if (!picnic.length) {
+            return res.status(404).json({ message: "One Day Picnic not found" });
         }
 
         const [images] = await pool.query(
-            'SELECT * FROM weekend_gateway_images WHERE gateway_id = ? ORDER BY is_main DESC, sort_order ASC',
+            'SELECT * FROM one_day_picnic_images WHERE picnic_id = ? ORDER BY is_main DESC, sort_order ASC',
             [req.params.id]
         );
 
-        const [relatedGateways] = await pool.query(`
-            SELECT rg.*, w.name, w.price 
-            FROM related_weekend_gateways rg
-            LEFT JOIN weekend_gateways w ON rg.related_gateway_id = w.gateway_id
-            WHERE rg.gateway_id = ?
-            ORDER BY rg.sort_order
+        const [relatedPicnics] = await pool.query(`
+            SELECT rp.*, p.name, p.price 
+            FROM related_one_day_picnic rp
+            LEFT JOIN one_day_picnic p ON rp.related_picnic_id = p.picnic_id
+            WHERE rp.picnic_id = ?
+            ORDER BY rp.sort_order
         `, [req.params.id]);
 
         res.json({
-            gateway: gateway[0],
+            picnic: picnic[0],
             images: images,
-            related_gateways: relatedGateways
+            related_picnics: relatedPicnics
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// CREATE new weekend gateway (with tour cost fields)
+// CREATE new one day picnic
 router.post('/', async (req, res) => {
     const { 
-        gateway_code,
+        picnic_code,
         name,
         price,
-        per_pax_twin,
-        per_pax_triple,
-        child_with_bed,
-        child_without_bed,
-        infant,
-        per_pax_single,
+        property_rate,
         overview,
         inclusive,
         exclusive,
@@ -142,19 +138,14 @@ router.post('/', async (req, res) => {
 
     try {
         const [result] = await pool.query(
-            `INSERT INTO weekend_gateways 
-            (gateway_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, cancellation_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            `INSERT INTO one_day_picnic 
+            (picnic_code, name, price, property_rate, overview, inclusive, exclusive, places_nearby, booking_policy, cancellation_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
-                gateway_code,
+                picnic_code,
                 name,
                 price,
-                per_pax_twin || null,
-                per_pax_triple || null,
-                child_with_bed || null,
-                child_without_bed || null,
-                infant || null,
-                per_pax_single || null,
+                property_rate || '',
                 overview || '',
                 inclusive || '',
                 exclusive || '',
@@ -166,27 +157,22 @@ router.post('/', async (req, res) => {
 
         res.status(201).json({ 
             success: true,
-            gateway_id: result.insertId,
-            message: 'Weekend Gateway created successfully'
+            picnic_id: result.insertId,
+            message: 'One Day Picnic created successfully'
         });
     } catch (err) {
-        console.error('Error creating weekend gateway:', err);
+        console.error('Error creating one day picnic:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// UPDATE weekend gateway (with tour cost fields)
+// UPDATE one day picnic
 router.put('/:id', async (req, res) => {
-    const gatewayId = req.params.id;
+    const picnicId = req.params.id;
     const { 
         name,
         price,
-        per_pax_twin,
-        per_pax_triple,
-        child_with_bed,
-        child_without_bed,
-        infant,
-        per_pax_single,
+        property_rate,
         overview,
         inclusive,
         exclusive,
@@ -198,20 +184,14 @@ router.put('/:id', async (req, res) => {
 
     try {
         const [result] = await pool.query(
-            `UPDATE weekend_gateways 
-             SET name = ?, price = ?, per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
-                 child_without_bed = ?, infant = ?, per_pax_single = ?, overview = ?, inclusive = ?, 
+            `UPDATE one_day_picnic 
+             SET name = ?, price = ?, property_rate = ?, overview = ?, inclusive = ?, 
                  exclusive = ?, places_nearby = ?, booking_policy = ?, cancellation_policy = ?, status = ?
-             WHERE gateway_id = ?`,
+             WHERE picnic_id = ?`,
             [
                 name,
                 price,
-                per_pax_twin || null,
-                per_pax_triple || null,
-                child_with_bed || null,
-                child_without_bed || null,
-                infant || null,
-                per_pax_single || null,
+                property_rate || '',
                 overview || '',
                 inclusive || '',
                 exclusive || '',
@@ -219,69 +199,69 @@ router.put('/:id', async (req, res) => {
                 booking_policy || '',
                 cancellation_policy || '',
                 status || 1,
-                gatewayId
+                picnicId
             ]
         );
 
         if (result.affectedRows === 0) {
-            return res.status(404).json({ message: "Weekend Gateway not found" });
+            return res.status(404).json({ message: "One Day Picnic not found" });
         }
 
         res.json({ 
             success: true,
-            message: 'Weekend Gateway updated successfully'
+            message: 'One Day Picnic updated successfully'
         });
     } catch (err) {
-        console.error('Error updating weekend gateway:', err);
+        console.error('Error updating one day picnic:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// DELETE weekend gateway (hard delete)
+// DELETE one day picnic (hard delete)
 router.delete('/:id', async (req, res) => {
     const connection = await pool.getConnection();
     
     try {
         await connection.beginTransaction();
 
-        const gatewayId = req.params.id;
+        const picnicId = req.params.id;
 
-        // First check if gateway exists
-        const [gateway] = await connection.query(
-            'SELECT gateway_id FROM weekend_gateways WHERE gateway_id = ?',
-            [gatewayId]
+        // First check if picnic exists
+        const [picnic] = await connection.query(
+            'SELECT picnic_id FROM one_day_picnic WHERE picnic_id = ?',
+            [picnicId]
         );
 
-        if (gateway.length === 0) {
+        if (picnic.length === 0) {
             await connection.rollback();
             connection.release();
-            return res.status(404).json({ message: "Weekend Gateway not found" });
+            return res.status(404).json({ message: "One Day Picnic not found" });
         }
 
         // Delete related records in correct order
 
-        // 1. Delete weekend booking children (if any)
+        // 1. Delete booking guests
         await connection.query(
-            'DELETE wbc FROM weekend_booking_children wbc INNER JOIN weekend_bookings wb ON wbc.booking_id = wb.booking_id WHERE wb.property_name IN (SELECT name FROM weekend_gateways WHERE gateway_id = ?)',
-            [gatewayId]
+            'DELETE bg FROM one_day_picnic_booking_guests bg INNER JOIN one_day_picnic_bookings pb ON bg.booking_id = pb.booking_id WHERE pb.picnic_code IN (SELECT picnic_code FROM one_day_picnic WHERE picnic_id = ?)',
+            [picnicId]
         );
 
-        // 2. Delete weekend bookings
+        // 2. Delete bookings
         await connection.query(
-            'DELETE FROM weekend_bookings WHERE property_name IN (SELECT name FROM weekend_gateways WHERE gateway_id = ?)',
-            [gatewayId]
+            'DELETE FROM one_day_picnic_bookings WHERE picnic_code IN (SELECT picnic_code FROM one_day_picnic WHERE picnic_id = ?)',
+            [picnicId]
         );
 
-        // 3. Delete related weekend gateways
+        // 3. Delete related picnics
         await connection.query(
-            'DELETE FROM related_weekend_gateways WHERE gateway_id = ? OR related_gateway_id = ?',
-            [gatewayId, gatewayId]
+            'DELETE FROM related_one_day_picnic WHERE picnic_id = ? OR related_picnic_id = ?',
+            [picnicId, picnicId]
         );
 
-        // 4. Delete gateway images and physical files
+        // 4. Delete images and physical files
         const [images] = await connection.query(
-            'SELECT image_url FROM weekend_gateway_images WHERE gateway_id = ?',
-            [gatewayId]
+            'SELECT image_url FROM one_day_picnic_images WHERE picnic_id = ?',
+            [picnicId]
         );
 
         // Delete physical image files
@@ -292,37 +272,37 @@ router.delete('/:id', async (req, res) => {
             }
         }
 
-        // Delete image records from database
+        // Delete image records
         await connection.query(
-            'DELETE FROM weekend_gateway_images WHERE gateway_id = ?',
-            [gatewayId]
+            'DELETE FROM one_day_picnic_images WHERE picnic_id = ?',
+            [picnicId]
         );
 
-        // 5. Finally delete the weekend gateway
+        // 5. Finally delete the picnic
         const [result] = await connection.query(
-            'DELETE FROM weekend_gateways WHERE gateway_id = ?',
-            [gatewayId]
+            'DELETE FROM one_day_picnic WHERE picnic_id = ?',
+            [picnicId]
         );
 
         await connection.commit();
         
         res.json({ 
             success: true,
-            message: 'Weekend Gateway and all related records deleted successfully' 
+            message: 'One Day Picnic and all related records deleted successfully' 
         });
 
     } catch (err) {
         await connection.rollback();
-        console.error('Error deleting weekend gateway:', err);
+        console.error('Error deleting one day picnic:', err);
         res.status(500).json({ error: err.message });
     } finally {
         connection.release();
     }
 });
 
-// UPLOAD images for weekend gateway
-router.post('/upload/:gatewayId', upload.array('images', 10), async (req, res) => {
-    const gatewayId = req.params.gatewayId;
+// UPLOAD images for one day picnic
+router.post('/upload/:picnicId', upload.array('images', 10), async (req, res) => {
+    const picnicId = req.params.picnicId;
     const files = req.files;
 
     if (!files || files.length === 0) {
@@ -330,30 +310,33 @@ router.post('/upload/:gatewayId', upload.array('images', 10), async (req, res) =
     }
 
     try {
-        const [gateway] = await pool.query(
-            'SELECT gateway_id FROM weekend_gateways WHERE gateway_id = ?',
-            [gatewayId]
+        // Check if picnic exists
+        const [picnic] = await pool.query(
+            'SELECT picnic_id FROM one_day_picnic WHERE picnic_id = ?',
+            [picnicId]
         );
 
-        if (gateway.length === 0) {
-            return res.status(404).json({ message: "Weekend Gateway not found" });
+        if (picnic.length === 0) {
+            return res.status(404).json({ message: "One Day Picnic not found" });
         }
 
+        // Check if this is the first image (make it main)
         const [existingImages] = await pool.query(
-            'SELECT COUNT(*) as count FROM weekend_gateway_images WHERE gateway_id = ?',
-            [gatewayId]
+            'SELECT COUNT(*) as count FROM one_day_picnic_images WHERE picnic_id = ?',
+            [picnicId]
         );
         const isFirstImage = existingImages[0].count === 0;
 
+        // Insert image records
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            const imageUrl = `/uploads/weekend-gateways/${file.filename}`;
+            const imageUrl = `/uploads/one-day-picnic/${file.filename}`;
             
             await pool.query(
-                `INSERT INTO weekend_gateway_images (gateway_id, image_url, is_main, sort_order)
+                `INSERT INTO one_day_picnic_images (picnic_id, image_url, is_main, sort_order)
                  VALUES (?, ?, ?, ?)`,
                 [
-                    gatewayId, 
+                    picnicId, 
                     imageUrl, 
                     isFirstImage && i === 0 ? 1 : 0, 
                     existingImages[0].count + i
@@ -366,7 +349,7 @@ router.post('/upload/:gatewayId', upload.array('images', 10), async (req, res) =
             message: `${files.length} image(s) uploaded successfully`,
             files: files.map(f => ({
                 filename: f.filename,
-                url: `/uploads/weekend-gateways/${f.filename}`
+                url: `/uploads/one-day-picnic/${f.filename}`
             }))
         });
     } catch (err) {
@@ -379,8 +362,9 @@ router.put('/images/main/:imageId', async (req, res) => {
     const imageId = req.params.imageId;
 
     try {
+        // Get the picnic_id of this image
         const [image] = await pool.query(
-            'SELECT gateway_id FROM weekend_gateway_images WHERE image_id = ?',
+            'SELECT picnic_id FROM one_day_picnic_images WHERE image_id = ?',
             [imageId]
         );
 
@@ -388,15 +372,17 @@ router.put('/images/main/:imageId', async (req, res) => {
             return res.status(404).json({ message: "Image not found" });
         }
 
-        const gatewayId = image[0].gateway_id;
+        const picnicId = image[0].picnic_id;
 
+        // Remove main flag from all images of this picnic
         await pool.query(
-            'UPDATE weekend_gateway_images SET is_main = 0 WHERE gateway_id = ?',
-            [gatewayId]
+            'UPDATE one_day_picnic_images SET is_main = 0 WHERE picnic_id = ?',
+            [picnicId]
         );
 
+        // Set this image as main
         await pool.query(
-            'UPDATE weekend_gateway_images SET is_main = 1 WHERE image_id = ?',
+            'UPDATE one_day_picnic_images SET is_main = 1 WHERE image_id = ?',
             [imageId]
         );
 
@@ -414,8 +400,9 @@ router.delete('/images/:imageId', async (req, res) => {
     const imageId = req.params.imageId;
 
     try {
+        // Get image info to delete file
         const [image] = await pool.query(
-            'SELECT image_url FROM weekend_gateway_images WHERE image_id = ?',
+            'SELECT image_url FROM one_day_picnic_images WHERE image_id = ?',
             [imageId]
         );
 
@@ -423,8 +410,10 @@ router.delete('/images/:imageId', async (req, res) => {
             return res.status(404).json({ message: "Image not found" });
         }
 
-        await pool.query('DELETE FROM weekend_gateway_images WHERE image_id = ?', [imageId]);
+        // Delete from database
+        await pool.query('DELETE FROM one_day_picnic_images WHERE image_id = ?', [imageId]);
 
+        // Try to delete physical file
         const filePath = path.join(__dirname, '..', image[0].image_url);
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
@@ -439,37 +428,39 @@ router.delete('/images/:imageId', async (req, res) => {
     }
 });
 
-// RELATED WEEKEND GATEWAYS ROUTES
+// RELATED ONE DAY PICNIC ROUTES
 
-// Add related weekend gateway
-router.post('/related/:gatewayId', async (req, res) => {
-    const gatewayId = req.params.gatewayId;
+// Add related one day picnic
+router.post('/related/:picnicId', async (req, res) => {
+    const picnicId = req.params.picnicId;
     const { related_name, related_price, related_image, sort_order } = req.body;
 
     try {
-        const [existingGateway] = await pool.query(
-            'SELECT gateway_id FROM weekend_gateways WHERE name = ? AND status = 1',
+        // Try to find if there's an existing picnic with this name
+        const [existingPicnic] = await pool.query(
+            'SELECT picnic_id FROM one_day_picnic WHERE name = ? AND status = 1',
             [related_name]
         );
 
-        let related_gateway_id = null;
+        let related_picnic_id = null;
         
-        if (existingGateway.length > 0) {
-            related_gateway_id = existingGateway[0].gateway_id;
+        if (existingPicnic.length > 0) {
+            related_picnic_id = existingPicnic[0].picnic_id;
         }
 
+        // Only filter out blob URLs, keep actual image paths
         let imageUrl = related_image;
         if (imageUrl && imageUrl.startsWith('blob:')) {
             imageUrl = null;
         }
 
         const [result] = await pool.query(
-            `INSERT INTO related_weekend_gateways 
-            (gateway_id, related_gateway_id, related_name, related_price, related_image, sort_order)
+            `INSERT INTO related_one_day_picnic 
+            (picnic_id, related_picnic_id, related_name, related_price, related_image, sort_order)
             VALUES (?, ?, ?, ?, ?, ?)`,
             [
-                gatewayId, 
-                related_gateway_id, 
+                picnicId, 
+                related_picnic_id, 
                 related_name, 
                 related_price || null, 
                 imageUrl || null, 
@@ -480,17 +471,17 @@ router.post('/related/:gatewayId', async (req, res) => {
         res.status(201).json({ 
             success: true,
             relation_id: result.insertId,
-            message: 'Related weekend gateway added successfully'
+            message: 'Related one day picnic added successfully'
         });
     } catch (err) {
-        console.error('Error adding related weekend gateway:', err);
+        console.error('Error adding related one day picnic:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// UPLOAD image for related weekend gateway
-router.post('/upload-related/:gatewayId', upload.single('image'), async (req, res) => {
-    const gatewayId = req.params.gatewayId;
+// UPLOAD image for related one day picnic
+router.post('/upload-related/:picnicId', upload.single('image'), async (req, res) => {
+    const picnicId = req.params.picnicId;
     const file = req.file;
 
     if (!file) {
@@ -498,16 +489,17 @@ router.post('/upload-related/:gatewayId', upload.single('image'), async (req, re
     }
 
     try {
-        const [gateway] = await pool.query(
-            'SELECT gateway_id FROM weekend_gateways WHERE gateway_id = ?',
-            [gatewayId]
+        // Check if picnic exists
+        const [picnic] = await pool.query(
+            'SELECT picnic_id FROM one_day_picnic WHERE picnic_id = ?',
+            [picnicId]
         );
 
-        if (gateway.length === 0) {
-            return res.status(404).json({ message: "Weekend Gateway not found" });
+        if (picnic.length === 0) {
+            return res.status(404).json({ message: "One Day Picnic not found" });
         }
 
-        const imageUrl = `/uploads/weekend-gateways/${file.filename}`;
+        const imageUrl = `/uploads/one-day-picnic/${file.filename}`;
 
         res.json({ 
             success: true,
@@ -519,16 +511,16 @@ router.post('/upload-related/:gatewayId', upload.single('image'), async (req, re
     }
 });
 
-// Get related weekend gateways
-router.get('/related/:gatewayId', async (req, res) => {
+// Get related one day picnics
+router.get('/related/:picnicId', async (req, res) => {
     try {
         const [rows] = await pool.query(`
-            SELECT rg.*, w.name, w.price 
-            FROM related_weekend_gateways rg
-            LEFT JOIN weekend_gateways w ON rg.related_gateway_id = w.gateway_id
-            WHERE rg.gateway_id = ?
-            ORDER BY rg.sort_order
-        `, [req.params.gatewayId]);
+            SELECT rp.*, p.name, p.price 
+            FROM related_one_day_picnic rp
+            LEFT JOIN one_day_picnic p ON rp.related_picnic_id = p.picnic_id
+            WHERE rp.picnic_id = ?
+            ORDER BY rp.sort_order
+        `, [req.params.picnicId]);
 
         res.json(rows);
     } catch (err) {
@@ -536,34 +528,36 @@ router.get('/related/:gatewayId', async (req, res) => {
     }
 });
 
-// Update related weekend gateway
+// Update related one day picnic
 router.put('/related/:relationId', async (req, res) => {
     const relationId = req.params.relationId;
     const { related_name, related_price, related_image, sort_order } = req.body;
 
     try {
-        const [existingGateway] = await pool.query(
-            'SELECT gateway_id FROM weekend_gateways WHERE name = ? AND status = 1',
+        // Try to find if there's an existing picnic with this name
+        const [existingPicnic] = await pool.query(
+            'SELECT picnic_id FROM one_day_picnic WHERE name = ? AND status = 1',
             [related_name]
         );
 
-        let related_gateway_id = null;
+        let related_picnic_id = null;
         
-        if (existingGateway.length > 0) {
-            related_gateway_id = existingGateway[0].gateway_id;
+        if (existingPicnic.length > 0) {
+            related_picnic_id = existingPicnic[0].picnic_id;
         }
 
+        // Only filter out blob URLs, keep actual image paths
         let imageUrl = related_image;
         if (imageUrl && imageUrl.startsWith('blob:')) {
             imageUrl = null;
         }
 
         await pool.query(
-            `UPDATE related_weekend_gateways 
-             SET related_gateway_id = ?, related_name = ?, related_price = ?, related_image = ?, sort_order = ?
+            `UPDATE related_one_day_picnic 
+             SET related_picnic_id = ?, related_name = ?, related_price = ?, related_image = ?, sort_order = ?
              WHERE relation_id = ?`,
             [
-                related_gateway_id, 
+                related_picnic_id, 
                 related_name, 
                 related_price || null, 
                 imageUrl || null, 
@@ -574,91 +568,91 @@ router.put('/related/:relationId', async (req, res) => {
 
         res.json({ 
             success: true,
-            message: 'Related weekend gateway updated successfully'
+            message: 'Related one day picnic updated successfully'
         });
     } catch (err) {
-        console.error('Error updating related weekend gateway:', err);
+        console.error('Error updating related one day picnic:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// Delete related weekend gateway
+// Delete related one day picnic
 router.delete('/related/:relationId', async (req, res) => {
     try {
-        await pool.query('DELETE FROM related_weekend_gateways WHERE relation_id = ?', [req.params.relationId]);
+        await pool.query('DELETE FROM related_one_day_picnic WHERE relation_id = ?', [req.params.relationId]);
 
         res.json({ 
             success: true,
-            message: 'Related weekend gateway deleted successfully'
+            message: 'Related one day picnic deleted successfully'
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// ==================== WEEKEND BOOKING FORM ROUTES ====================
+// ==================== BOOKING FORM ROUTES ====================
 
-// POST - Save weekend booking form data
+// POST - Save booking form data
 router.post('/bookings', async (req, res) => {
     const {
-        property_name,
+        picnic_code,
         city,
-        person_name,
+        contact_person,
         cell_no,
         email_id,
         address,
-        city_location,
         pin_code,
         state,
         country,
-        no_of_adults,
-        no_of_rooms,
-        no_of_child,
-        children
+        no_of_people,
+        guests
     } = req.body;
+
+    // Validate required fields
+    if (!picnic_code || !city || !contact_person || !cell_no) {
+        return res.status(400).json({ 
+            error: 'Missing required fields: picnic_code, city, contact_person, and cell_no are required' 
+        });
+    }
 
     try {
         const connection = await pool.getConnection();
         await connection.beginTransaction();
 
         try {
-            // Insert main weekend booking
+            // Insert main booking
             const [bookingResult] = await connection.query(
-                `INSERT INTO weekend_bookings 
-                (property_name, city, person_name, cell_no, email_id, address, city_location, 
-                 pin_code, state, country, no_of_adults, no_of_rooms, no_of_child)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO one_day_picnic_bookings 
+                (picnic_code, city, contact_person, cell_no, email_id, address, pin_code, state, country, no_of_people)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    property_name,
+                    picnic_code,
                     city,
-                    person_name,
+                    contact_person,
                     cell_no,
-                    email_id,
-                    address,
-                    city_location,
-                    pin_code,
-                    state,
+                    email_id || null,
+                    address || null,
+                    pin_code || null,
+                    state || null,
                     country || 'India',
-                    no_of_adults,
-                    no_of_rooms,
-                    no_of_child || 0
+                    no_of_people || 1
                 ]
             );
 
             const bookingId = bookingResult.insertId;
 
-            // Insert child details if any
-            if (children && children.length > 0) {
-                for (const child of children) {
+            // Insert guest details
+            if (guests && guests.length > 0) {
+                for (const guest of guests) {
                     await connection.query(
-                        `INSERT INTO weekend_booking_children (booking_id, name, age, cell_no, email_id)
+                        `INSERT INTO one_day_picnic_booking_guests (booking_id, name, age, cell_no, email_id)
                          VALUES (?, ?, ?, ?, ?)`,
                         [
                             bookingId,
-                            child.name,
-                            child.age,
-                            child.cell_no || null,
-                            child.email_id || null
+                            guest.name,
+                            guest.age || null,
+                            guest.cell_no || null,
+                            guest.email_id || null
                         ]
                     );
                 }
@@ -670,7 +664,7 @@ router.post('/bookings', async (req, res) => {
             res.status(201).json({
                 success: true,
                 booking_id: bookingId,
-                message: 'Weekend booking saved successfully'
+                message: 'Booking saved successfully'
             });
         } catch (err) {
             await connection.rollback();
@@ -678,67 +672,67 @@ router.post('/bookings', async (req, res) => {
             throw err;
         }
     } catch (err) {
-        console.error('Error saving weekend booking:', err);
+        console.error('Error saving booking:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// GET - Get all weekend bookings
+// GET - Get all bookings
 router.get('/bookings', async (req, res) => {
     try {
         const [bookings] = await pool.query(`
-            SELECT wb.*, 
-                   COUNT(wbc.child_id) as actual_children
-            FROM weekend_bookings wb
-            LEFT JOIN weekend_booking_children wbc ON wb.booking_id = wbc.booking_id
-            GROUP BY wb.booking_id
-            ORDER BY wb.created_at DESC
+            SELECT b.*, 
+                   COUNT(bg.guest_id) as actual_guests
+            FROM one_day_picnic_bookings b
+            LEFT JOIN one_day_picnic_booking_guests bg ON b.booking_id = bg.booking_id
+            GROUP BY b.booking_id
+            ORDER BY b.created_at DESC
         `);
 
-        // Get children for each booking
+        // Get guests for each booking
         for (let booking of bookings) {
-            const [children] = await pool.query(
-                'SELECT * FROM weekend_booking_children WHERE booking_id = ? ORDER BY child_id',
+            const [guests] = await pool.query(
+                'SELECT * FROM one_day_picnic_booking_guests WHERE booking_id = ? ORDER BY guest_id',
                 [booking.booking_id]
             );
-            booking.children = children;
+            booking.guests = guests;
         }
 
         res.json(bookings);
     } catch (err) {
-        console.error('Error fetching weekend bookings:', err);
+        console.error('Error fetching bookings:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// GET - Get single weekend booking by ID
+// GET - Get single booking by ID
 router.get('/bookings/:id', async (req, res) => {
     try {
         const [bookings] = await pool.query(
-            'SELECT * FROM weekend_bookings WHERE booking_id = ?',
+            'SELECT * FROM one_day_picnic_bookings WHERE booking_id = ?',
             [req.params.id]
         );
 
         if (bookings.length === 0) {
-            return res.status(404).json({ message: "Weekend booking not found" });
+            return res.status(404).json({ message: "Booking not found" });
         }
 
-        const [children] = await pool.query(
-            'SELECT * FROM weekend_booking_children WHERE booking_id = ? ORDER BY child_id',
+        const [guests] = await pool.query(
+            'SELECT * FROM one_day_picnic_booking_guests WHERE booking_id = ? ORDER BY guest_id',
             [req.params.id]
         );
 
         res.json({
             booking: bookings[0],
-            children: children
+            guests: guests
         });
     } catch (err) {
-        console.error('Error fetching weekend booking:', err);
+        console.error('Error fetching booking:', err);
         res.status(500).json({ error: err.message });
     }
 });
 
-// DELETE - Delete weekend booking
+// DELETE - Delete booking
 router.delete('/bookings/:id', async (req, res) => {
     try {
         const connection = await pool.getConnection();
@@ -747,25 +741,25 @@ router.delete('/bookings/:id', async (req, res) => {
         try {
             // First check if booking exists
             const [check] = await connection.query(
-                'SELECT booking_id FROM weekend_bookings WHERE booking_id = ?',
+                'SELECT booking_id FROM one_day_picnic_bookings WHERE booking_id = ?',
                 [req.params.id]
             );
 
             if (check.length === 0) {
                 await connection.rollback();
                 connection.release();
-                return res.status(404).json({ message: "Weekend booking not found" });
+                return res.status(404).json({ message: "Booking not found" });
             }
 
-            // Delete children first (foreign key constraint)
+            // Delete guests first
             await connection.query(
-                'DELETE FROM weekend_booking_children WHERE booking_id = ?',
+                'DELETE FROM one_day_picnic_booking_guests WHERE booking_id = ?',
                 [req.params.id]
             );
 
             // Delete booking
             await connection.query(
-                'DELETE FROM weekend_bookings WHERE booking_id = ?',
+                'DELETE FROM one_day_picnic_bookings WHERE booking_id = ?',
                 [req.params.id]
             );
 
@@ -774,7 +768,7 @@ router.delete('/bookings/:id', async (req, res) => {
 
             res.json({
                 success: true,
-                message: 'Weekend booking deleted successfully'
+                message: 'Booking deleted successfully'
             });
         } catch (err) {
             await connection.rollback();
@@ -782,7 +776,7 @@ router.delete('/bookings/:id', async (req, res) => {
             throw err;
         }
     } catch (err) {
-        console.error('Error deleting weekend booking:', err);
+        console.error('Error deleting booking:', err);
         res.status(500).json({ error: err.message });
     }
 });

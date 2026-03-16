@@ -132,8 +132,10 @@ const miceRoutes = require('./routes/miceroutes');
 
 const flightspaymentRoutes = require('./routes/flightspayments_v1');
 const bungalowRoutes = require('./routes/bunglow');
+const oneDayPicnicRoutes = require('./routes/onedaypicnic');
 const weekendGatewayRoutes = require('./routes/weekend');
 
+const Passport = require('./routes/Passport');
 
 
 // Update the static middleware to serve carousel images
@@ -174,6 +176,9 @@ app.use(
 // Serve bungalow uploads
 app.use('/uploads/bungalows', express.static(path.join(__dirname, 'uploads/bungalows')));
 
+// Serve one day picnic uploads
+app.use('/uploads/one-day-picnic', express.static(path.join(__dirname, 'uploads/one-day-picnic')));
+
 // Add this line for weekend gateway uploads
 app.use('/uploads/weekend-gateways', express.static(path.join(__dirname, 'uploads/weekend-gateways')));
 
@@ -193,7 +198,7 @@ app.use('/video-uploads', express.static(uploadsDir));
 app.use('/video-uploads/videos', express.static(videosDir));
 app.use('/api/leads', leadsRoutes);
 
-
+app.use('/api/passport', Passport);
 app.use('/api/carousel-images', carouselImagesRoutes);
 
 // === VIDEO CAROUSEL ROUTE ===
@@ -251,6 +256,8 @@ app.use('/api', flightspaymentRoutes);
 
 // Add this with your other routes
 app.use('/api/bungalows', bungalowRoutes);
+// Add this with your other routes
+app.use('/api/one-day-picnic', oneDayPicnicRoutes);
 app.use('/api/weekend-gateways', weekendGatewayRoutes);
 
 app.use('/api/offline-hotels', offlineHotelsRoutes);

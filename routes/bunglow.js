@@ -615,228 +615,208 @@ router.delete('/related/:relationId', async (req, res) => {
 
 // ==================== BOOKING FORM ROUTES ====================
 
-// POST - Save booking form data
 router.post('/bookings', async (req, res) => {
-    const {
-        bungalow_code,
-        city,
-        contact_person,
-        cell_no,
-        email_id,
-        address,
-        pin_code,
-        state,
-        country,
-        no_of_people,
-        guests
-    } = req.body;
+  const {
+    bungalow_code,
+    city,
+    contact_person,
+    cell_no,
+    email_id,
+    address,
+    pin_code,
+    state,
+    country,
+    no_of_people,
+    guests,
+    type // ✅ receive the new column
+  } = req.body;
 
-    // Log received data for debugging
-    console.log('Received booking data:', {
+  // Validate required fields
+  if (!bungalow_code || !city || !contact_person || !cell_no) {
+    return res.status(400).json({ 
+      error: 'Missing required fields: bungalow_code, city, contact_person, and cell_no are required' 
+    });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    try {
+      // Insert main booking
+      const [bookingResult] = await connection.query(
+        `INSERT INTO bungalow_bookings 
+        (bungalow_code, city, contact_person, cell_no, email_id, address, pin_code, state, country, no_of_people, type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bungalow_code,
+          city,
+          contact_person,
+          cell_no,
+          email_id || null,
+          address || null,
+          pin_code || null,
+          state || null,
+          country || 'India',
+          no_of_people || 1,
+          type || 'NULL' 
+        ]
+      );
+
+      const bookingId = bookingResult.insertId;
+
+      // Insert guest details
+      if (guests && guests.length > 0) {
+        for (const guest of guests) {
+          await connection.query(
+            `INSERT INTO booking_guests (booking_id, name, age, cell_no, email_id)
+             VALUES (?, ?, ?, ?, ?)`,
+            [
+              bookingId,
+              guest.name,
+              guest.age || null,
+              guest.cell_no || null,
+              guest.email_id || null
+            ]
+          );
+        }
+      }
+
+      await connection.commit();
+      connection.release();
+
+      res.status(201).json({
+        success: true,
+        booking_id: bookingId,
+        message: 'Booking saved successfully'
+      });
+    } catch (err) {
+      await connection.rollback();
+      connection.release();
+      console.error('Error in transaction:', err);
+      throw err;
+    }
+  } catch (err) {
+    console.error('Error saving booking:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+router.post('/weekend-gateways/bookings', async (req, res) => {
+  console.log("Request Body:", JSON.stringify(req.body, null, 2));
+  
+  const {
+    bungalow_code,      // from frontend property_name
+    city,
+    contact_person,     // from frontend person_name
+    cell_no,
+    email_id,
+    address,
+    pin_code,
+    state,
+    country,
+    no_of_adults,       // individual adult count
+    no_of_child,        // individual child count
+    no_of_rooms,        // from frontend
+    city_location,      // from frontend
+    type,               // from frontend (should be "weekend")
+    guests              // combined array of adults and children with guest_type
+  } = req.body;
+
+  console.log("Extracted fields:", {
+    bungalow_code,
+    city,
+    contact_person,
+    cell_no,
+    no_of_adults,
+    no_of_child,
+    no_of_rooms,
+    guestsCount: guests?.length
+  });
+
+  // Validate required fields
+  if (!bungalow_code || !city || !contact_person || !cell_no) {
+    return res.status(400).json({ 
+      error: 'Missing required fields' 
+    });
+  }
+
+  try {
+    const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    // Insert main booking with all fields
+    const [bookingResult] = await connection.query(
+      `INSERT INTO bungalow_bookings 
+      (bungalow_code, city, contact_person, cell_no, email_id, address, pin_code, state, country, no_of_adults, no_of_child, no_of_rooms, city_location, type)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
         bungalow_code,
         city,
         contact_person,
         cell_no,
-        email_id,
-        address,
-        pin_code,
-        state,
-        country,
-        no_of_people,
-        guestsCount: guests ? guests.length : 0
+        email_id || null,
+        address || null,
+        pin_code || null,
+        state || null,
+        country || 'India',
+        no_of_adults || '0',
+        no_of_child || '0',
+        no_of_rooms || null,
+        city_location || null,
+        type || null
+      ]
+    );
+
+    const bookingId = bookingResult.insertId;
+    console.log(`Booking inserted with ID: ${bookingId}`);
+    console.log(`Adults: ${no_of_adults || '0'}, Children: ${no_of_child || '0'}`);
+
+    // Insert guests with guest_type
+    if (guests && guests.length > 0) {
+      console.log(`Inserting ${guests.length} guests with guest_type`);
+      
+      for (const guest of guests) {
+        console.log(`Inserting guest: ${guest.name}, type: ${guest.guest_type}`);
+        
+        await connection.query(
+          `INSERT INTO booking_guests (booking_id, name, age, cell_no, email_id, guest_type)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            bookingId,
+            guest.name,
+            guest.age || null,
+            guest.cell_no || null,
+            guest.email_id || null,
+            guest.guest_type || null  
+          ]
+        );
+      }
+      
+      console.log(`Successfully inserted ${guests.length} guests with guest_type`);
+    } else {
+      console.log("No guests to insert");
+    }
+
+    await connection.commit();
+    connection.release();
+
+    res.status(201).json({
+      success: true,
+      booking_id: bookingId,
+      message: 'Weekend booking saved successfully',
+      summary: {
+        adults: no_of_adults,
+        children: no_of_child,
+        guests_count: guests?.length || 0
+      }
     });
 
-    // Validate required fields
-    if (!bungalow_code || !city || !contact_person || !cell_no) {
-        return res.status(400).json({ 
-            error: 'Missing required fields: bungalow_code, city, contact_person, and cell_no are required' 
-        });
-    }
-
-    try {
-        const connection = await pool.getConnection();
-        await connection.beginTransaction();
-
-        try {
-            // Insert main booking
-            const [bookingResult] = await connection.query(
-                `INSERT INTO bungalow_bookings 
-                (bungalow_code, city, contact_person, cell_no, email_id, address, pin_code, state, country, no_of_people)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    bungalow_code,
-                    city,
-                    contact_person,
-                    cell_no,
-                    email_id || null,
-                    address || null,
-                    pin_code || null,
-                    state || null,
-                    country || 'India',
-                    no_of_people || 1
-                ]
-            );
-
-            const bookingId = bookingResult.insertId;
-            console.log('Booking inserted with ID:', bookingId);
-
-            // Insert guest details
-            if (guests && guests.length > 0) {
-                for (const guest of guests) {
-                    console.log('Inserting guest:', guest);
-                    await connection.query(
-                        `INSERT INTO booking_guests (booking_id, name, age, cell_no, email_id)
-                         VALUES (?, ?, ?, ?, ?)`,
-                        [
-                            bookingId,
-                            guest.name,
-                            guest.age || null,
-                            guest.cell_no || null,
-                            guest.email_id || null
-                        ]
-                    );
-                }
-                console.log(`Inserted ${guests.length} guests`);
-            }
-
-            await connection.commit();
-            connection.release();
-
-            res.status(201).json({
-                success: true,
-                booking_id: bookingId,
-                message: 'Booking saved successfully'
-            });
-        } catch (err) {
-            await connection.rollback();
-            connection.release();
-            console.error('Error in transaction:', err);
-            throw err;
-        }
-    } catch (err) {
-        console.error('Error saving booking:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET - Get all bookings
-router.get('/bookings', async (req, res) => {
-    try {
-        console.log('Fetching all bookings...');
-        
-        const [bookings] = await pool.query(`
-            SELECT b.*, 
-                   COUNT(bg.guest_id) as actual_guests
-            FROM bungalow_bookings b
-            LEFT JOIN booking_guests bg ON b.booking_id = bg.booking_id
-            GROUP BY b.booking_id
-            ORDER BY b.created_at DESC
-        `);
-
-        console.log(`Found ${bookings.length} bookings`);
-
-        // Get guests for each booking
-        for (let booking of bookings) {
-            const [guests] = await pool.query(
-                'SELECT * FROM booking_guests WHERE booking_id = ? ORDER BY guest_id',
-                [booking.booking_id]
-            );
-            booking.guests = guests;
-            console.log(`Booking ${booking.booking_id} has ${guests.length} guests`);
-        }
-
-        res.json(bookings);
-    } catch (err) {
-        console.error('Error fetching bookings:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// GET - Get single booking by ID
-router.get('/bookings/:id', async (req, res) => {
-    try {
-        console.log('Fetching booking with ID:', req.params.id);
-        
-        const [bookings] = await pool.query(
-            'SELECT * FROM bungalow_bookings WHERE booking_id = ?',
-            [req.params.id]
-        );
-
-        if (bookings.length === 0) {
-            console.log('Booking not found with ID:', req.params.id);
-            return res.status(404).json({ message: "Booking not found" });
-        }
-
-        const [guests] = await pool.query(
-            'SELECT * FROM booking_guests WHERE booking_id = ? ORDER BY guest_id',
-            [req.params.id]
-        );
-
-        console.log('Booking found:', bookings[0]);
-        console.log('Guests found:', guests.length);
-
-        res.json({
-            booking: bookings[0],
-            guests: guests
-        });
-    } catch (err) {
-        console.error('Error fetching booking:', err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// DELETE - Delete booking
-router.delete('/bookings/:id', async (req, res) => {
-    try {
-        console.log('Deleting booking with ID:', req.params.id);
-        
-        const connection = await pool.getConnection();
-        await connection.beginTransaction();
-
-        try {
-            // First check if booking exists
-            const [check] = await connection.query(
-                'SELECT booking_id FROM bungalow_bookings WHERE booking_id = ?',
-                [req.params.id]
-            );
-
-            if (check.length === 0) {
-                await connection.rollback();
-                connection.release();
-                return res.status(404).json({ message: "Booking not found" });
-            }
-
-            // Delete guests first (foreign key constraint)
-            const [guestsResult] = await connection.query(
-                'DELETE FROM booking_guests WHERE booking_id = ?',
-                [req.params.id]
-            );
-            console.log(`Deleted ${guestsResult.affectedRows} guests`);
-
-            // Delete booking
-            const [result] = await connection.query(
-                'DELETE FROM bungalow_bookings WHERE booking_id = ?',
-                [req.params.id]
-            );
-
-            console.log(`Deleted booking: ${result.affectedRows}`);
-
-            await connection.commit();
-            connection.release();
-
-            res.json({
-                success: true,
-                message: 'Booking deleted successfully'
-            });
-        } catch (err) {
-            await connection.rollback();
-            connection.release();
-            throw err;
-        }
-    } catch (err) {
-        console.error('Error deleting booking:', err);
-        res.status(500).json({ error: err.message });
-    }
+  } catch (err) {
+    console.error('Error saving weekend booking:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
