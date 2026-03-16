@@ -3,13 +3,12 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const db = require('../../config/db'); // Your database connection
+const db = require('../../config/db');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = 'uploads/exhibition/';
-    // Create directory if it doesn't exist
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
@@ -17,18 +16,17 @@ const storage = multer.diskStorage({
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'banner-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, 'exhibition-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
 const upload = multer({ 
   storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: function (req, file, cb) {
     const filetypes = /jpeg|jpg|png|gif/;
     const mimetype = filetypes.test(file.mimetype);
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
     if (mimetype && extname) {
       return cb(null, true);
     }
@@ -36,16 +34,14 @@ const upload = multer({
   }
 });
 
-// ========== ABOUT EXHIBITION ROUTES ==========
+// Helper function to handle multiple file uploads
+const uploadMultiple = upload.array('images', 10); // Allow up to 10 images
 
-// Get About Exhibition (only one record allowed)
+// ========== ABOUT EXHIBITION ROUTES (unchanged) ==========
 router.get('/about', async (req, res) => {
   let connection;
   try {
-    // Get a connection from the pool
     connection = await db.getConnection();
-    
-    // First, get the main about exhibition record
     const [aboutRecords] = await connection.query(`
       SELECT * FROM about_exhibition 
       ORDER BY created_at DESC 
@@ -57,8 +53,6 @@ router.get('/about', async (req, res) => {
     }
 
     const exhibition = aboutRecords[0];
-    
-    // Then get the questions separately
     const [questions] = await connection.query(`
       SELECT id, question, answer, display_order 
       FROM about_exhibition_qa 
@@ -67,31 +61,22 @@ router.get('/about', async (req, res) => {
     `, [exhibition.id]);
 
     exhibition.questions = questions || [];
-    
     res.json(exhibition);
   } catch (error) {
     console.error('Error fetching about exhibition:', error);
     res.status(500).json({ error: 'Error fetching about exhibition' });
   } finally {
-    // Release the connection back to the pool
     if (connection) connection.release();
   }
 });
 
-// Create or Update About Exhibition (Only one allowed)
-// Create or Update About Exhibition (Only one allowed)
 router.post('/about', (req, res) => {
   upload.single('bannerImage')(req, res, async (err) => {
     let connection;
     try {
-      // Handle multer errors (only for new files)
-      if (err && err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File size too large. Maximum 5MB allowed.' });
+      if (err) {
+        return res.status(400).json({ error: err.message });
       }
-      if (err && err.message === 'Only image files are allowed!') {
-        return res.status(400).json({ error: 'Only image files (jpeg, jpg, png, gif) are allowed.' });
-      }
-      // Don't return error if no file is uploaded (for updates)
 
       const { questions, isEdit } = req.body;
       let parsedQuestions = [];
@@ -104,37 +89,22 @@ router.post('/about', (req, res) => {
         }
       }
 
-      const isEditing = isEdit === 'true';
       const bannerImage = req.file ? req.file.filename : null;
 
-      // Get a connection from the pool
       connection = await db.getConnection();
-      
-      // Start transaction
       await connection.beginTransaction();
 
       try {
-        // Check if about exhibition already exists
         const [existing] = await connection.query('SELECT id, banner_image FROM about_exhibition LIMIT 1');
         
         let exhibitionId;
-        let currentBannerImage = existing.length > 0 ? existing[0].banner_image : null;
-        
-        // Validate: banner image is required for new records
-        if (!isEditing && !bannerImage) {
-          await connection.rollback();
-          return res.status(400).json({ error: 'Banner image is required for new records' });
-        }
         
         if (existing.length > 0) {
-          // Update existing
           exhibitionId = existing[0].id;
           
-          // Prepare update query based on whether new banner image is provided
           if (bannerImage) {
-            // Delete old banner image file if exists
-            if (currentBannerImage) {
-              const oldFilePath = path.join('uploads/exhibition/', currentBannerImage);
+            if (existing[0].banner_image) {
+              const oldFilePath = path.join('uploads/exhibition/', existing[0].banner_image);
               if (fs.existsSync(oldFilePath)) {
                 fs.unlinkSync(oldFilePath);
               }
@@ -144,21 +114,13 @@ router.post('/about', (req, res) => {
               'UPDATE about_exhibition SET banner_image = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
               [bannerImage, exhibitionId]
             );
-          } else {
-            // Keep existing banner image
-            await connection.query(
-              'UPDATE about_exhibition SET updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-              [exhibitionId]
-            );
           }
           
-          // Delete existing questions
           await connection.query('DELETE FROM about_exhibition_qa WHERE about_exhibition_id = ?', [exhibitionId]);
         } else {
-          // Create new (bannerImage must exist at this point due to validation above)
           if (!bannerImage) {
             await connection.rollback();
-            return res.status(400).json({ error: 'Banner image is required' });
+            return res.status(400).json({ error: 'Banner image is required for new records' });
           }
           
           const [result] = await connection.query(
@@ -168,7 +130,6 @@ router.post('/about', (req, res) => {
           exhibitionId = result.insertId;
         }
 
-        // Insert new questions
         if (parsedQuestions.length > 0) {
           const questionValues = parsedQuestions.map((q, index) => [
             exhibitionId,
@@ -184,7 +145,6 @@ router.post('/about', (req, res) => {
         }
 
         await connection.commit();
-        
         res.json({ 
           message: existing.length > 0 ? 'About exhibition updated successfully' : 'About exhibition created successfully',
           id: exhibitionId 
@@ -192,331 +152,638 @@ router.post('/about', (req, res) => {
         
       } catch (error) {
         await connection.rollback();
-        console.error('Database error:', error);
         throw error;
       }
     } catch (error) {
       console.error('Error saving about exhibition:', error);
       res.status(500).json({ error: 'Error saving about exhibition' });
     } finally {
-      // Release the connection back to the pool
       if (connection) connection.release();
     }
   });
 });
 
-// Delete About Exhibition
-router.delete('/about/:id', async (req, res) => {
+// ========== DOMESTIC EXHIBITION ROUTES ==========
+
+// Get all domestic exhibitions with their cities
+router.get('/domestic', async (req, res) => {
+  try {
+    // Get all domestic exhibitions
+    const [exhibitions] = await db.query(`
+      SELECT * FROM domestic_exhibition 
+      ORDER BY created_at DESC
+    `);
+    
+    // For each exhibition, get its cities with images and prices
+    for (let exhibition of exhibitions) {
+      const [cities] = await db.query(
+        'SELECT id, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ? ORDER BY created_at',
+        [exhibition.id]
+      );
+      exhibition.cities = cities || [];
+    }
+    
+    res.json(exhibitions);
+  } catch (error) {
+    console.error('Error fetching domestic exhibitions:', error);
+    res.status(500).json({ error: 'Error fetching domestic exhibitions' });
+  }
+});
+
+// Get single domestic exhibition with its cities
+router.get('/domestic/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [exhibitions] = await db.query(
+      'SELECT * FROM domestic_exhibition WHERE id = ?',
+      [id]
+    );
+    
+    if (exhibitions.length === 0) {
+      return res.status(404).json({ error: 'Exhibition not found' });
+    }
+    
+    const exhibition = exhibitions[0];
+    
+    // Get cities for this exhibition
+    const [cities] = await db.query(
+      'SELECT id, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ? ORDER BY created_at',
+      [id]
+    );
+    
+    exhibition.cities = cities || [];
+    
+    res.json(exhibition);
+  } catch (error) {
+    console.error('Error fetching domestic exhibition:', error);
+    res.status(500).json({ error: 'Error fetching domestic exhibition' });
+  }
+});
+
+// Add new domestic exhibition with multiple cities
+router.post('/domestic', (req, res) => {
+  uploadMultiple(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    let connection;
+    try {
+      const { country_name, cityNames, prices } = req.body;
+      const files = req.files || [];
+      
+      if (!country_name || country_name.trim() === '') {
+        return res.status(400).json({ error: 'Category name is required' });
+      }
+      
+      // Parse the JSON strings
+      let cityNamesArray = [];
+      let pricesArray = [];
+      
+      try {
+        cityNamesArray = JSON.parse(cityNames || '[]');
+        pricesArray = JSON.parse(prices || '[]');
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid data format' });
+      }
+      
+      // Validate we have matching data
+      if (cityNamesArray.length === 0) {
+        return res.status(400).json({ error: 'At least one city is required' });
+      }
+      
+      if (cityNamesArray.length !== pricesArray.length) {
+        return res.status(400).json({ error: 'Mismatch between cities and prices' });
+      }
+      
+      if (cityNamesArray.length !== files.length) {
+        return res.status(400).json({ error: 'Please upload an image for each city' });
+      }
+      
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      
+      // Insert the main exhibition
+      const [result] = await connection.query(
+        'INSERT INTO domestic_exhibition (country_name) VALUES (?)',
+        [country_name.trim()]
+      );
+      
+      const exhibitionId = result.insertId;
+      
+      // Insert each city with its image and price
+      for (let i = 0; i < cityNamesArray.length; i++) {
+        const cityName = cityNamesArray[i].trim();
+        const price = pricesArray[i];
+        const imageFile = files[i];
+        
+        if (!cityName) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'City name cannot be empty' });
+        }
+        
+        if (!price || price <= 0) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Valid price is required for each city' });
+        }
+        
+        await connection.query(
+          'INSERT INTO domestic_exhibition_cities (domestic_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+          [exhibitionId, cityName, imageFile.filename, price]
+        );
+      }
+      
+      await connection.commit();
+      
+      res.json({ 
+        message: 'Domestic exhibition added successfully',
+        id: exhibitionId 
+      });
+    } catch (error) {
+      if (connection) await connection.rollback();
+      console.error('Error adding domestic exhibition:', error);
+      
+      // Delete uploaded files if there was an error
+      if (req.files) {
+        req.files.forEach(file => {
+          const filePath = path.join('uploads/exhibition/', file.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        });
+      }
+      
+      res.status(500).json({ error: 'Error adding domestic exhibition' });
+    } finally {
+      if (connection) connection.release();
+    }
+  });
+});
+
+// Update domestic exhibition
+router.put('/domestic/:id', (req, res) => {
+  uploadMultiple(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    let connection;
+    try {
+      const { id } = req.params;
+      const { country_name, cityNames, prices, existingCityIds, existingImages } = req.body;
+      const files = req.files || [];
+      
+      if (!country_name || country_name.trim() === '') {
+        return res.status(400).json({ error: 'Category name is required' });
+      }
+      
+      // Parse the JSON strings
+      let cityNamesArray = JSON.parse(cityNames || '[]');
+      let pricesArray = JSON.parse(prices || '[]');
+      let existingCityIdsArray = JSON.parse(existingCityIds || '[]');
+      let existingImagesArray = JSON.parse(existingImages || '[]');
+      
+      // Validate we have matching data
+      if (cityNamesArray.length === 0) {
+        return res.status(400).json({ error: 'At least one city is required' });
+      }
+      
+      if (cityNamesArray.length !== pricesArray.length) {
+        return res.status(400).json({ error: 'Mismatch between cities and prices' });
+      }
+      
+      const totalCities = cityNamesArray.length;
+      const totalImages = existingImagesArray.length + files.length;
+      
+      if (totalCities !== totalImages) {
+        return res.status(400).json({ error: 'Please ensure each city has an image' });
+      }
+      
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      
+      // Update the main exhibition
+      await connection.query(
+        'UPDATE domestic_exhibition SET country_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [country_name.trim(), id]
+      );
+      
+      // Get existing cities to delete old images
+      const [oldCities] = await connection.query(
+        'SELECT id, image FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
+        [id]
+      );
+      
+      // Delete old city records
+      await connection.query('DELETE FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?', [id]);
+      
+      // Insert updated cities
+      let fileIndex = 0;
+      let existingImageIndex = 0;
+      
+      for (let i = 0; i < cityNamesArray.length; i++) {
+        const cityName = cityNamesArray[i].trim();
+        const price = pricesArray[i];
+        
+        if (!cityName) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'City name cannot be empty' });
+        }
+        
+        if (!price || price <= 0) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Valid price is required for each city' });
+        }
+        
+        let imageFilename;
+        
+        // Check if this city is using an existing image or a new uploaded image
+        if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
+          // Use existing image
+          imageFilename = existingImagesArray[existingImageIndex];
+          existingImageIndex++;
+        } else if (files.length > 0 && fileIndex < files.length) {
+          // Use new uploaded image
+          imageFilename = files[fileIndex].filename;
+          fileIndex++;
+        } else {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Image missing for city: ' + cityName });
+        }
+        
+        await connection.query(
+          'INSERT INTO domestic_exhibition_cities (domestic_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+          [id, cityName, imageFilename, price]
+        );
+      }
+      
+      // Delete old image files that are no longer used
+      const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
+      
+      for (let oldCity of oldCities) {
+        if (!newImageFilenames.includes(oldCity.image)) {
+          const oldFilePath = path.join('uploads/exhibition/', oldCity.image);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        }
+      }
+      
+      await connection.commit();
+      
+      res.json({ message: 'Domestic exhibition updated successfully' });
+    } catch (error) {
+      if (connection) await connection.rollback();
+      console.error('Error updating domestic exhibition:', error);
+      
+      // Delete newly uploaded files if there was an error
+      if (req.files) {
+        req.files.forEach(file => {
+          const filePath = path.join('uploads/exhibition/', file.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        });
+      }
+      
+      res.status(500).json({ error: 'Error updating domestic exhibition' });
+    } finally {
+      if (connection) connection.release();
+    }
+  });
+});
+
+// Delete domestic exhibition
+router.delete('/domestic/:id', async (req, res) => {
   let connection;
   try {
     const { id } = req.params;
     
-    // Get a connection from the pool
     connection = await db.getConnection();
     
-    // Get banner image path to delete file
-    const [exhibition] = await connection.query('SELECT banner_image FROM about_exhibition WHERE id = ?', [id]);
+    // Get all city images to delete files
+    const [cities] = await connection.query(
+      'SELECT image FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
+      [id]
+    );
     
-    if (exhibition.length > 0) {
-      // Delete the file
-      const filePath = path.join('uploads/exhibition/', exhibition[0].banner_image);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+    // Delete image files
+    for (let city of cities) {
+      if (city.image) {
+        const filePath = path.join('uploads/exhibition/', city.image);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
       }
     }
     
-    await connection.query('DELETE FROM about_exhibition WHERE id = ?', [id]);
+    // Delete the exhibition (cities will be deleted by CASCADE)
+    await connection.query('DELETE FROM domestic_exhibition WHERE id = ?', [id]);
     
-    res.json({ message: 'About exhibition deleted successfully' });
+    res.json({ message: 'Domestic exhibition deleted successfully' });
   } catch (error) {
-    console.error('Error deleting about exhibition:', error);
-    res.status(500).json({ error: 'Error deleting about exhibition' });
+    console.error('Error deleting domestic exhibition:', error);
+    res.status(500).json({ error: 'Error deleting domestic exhibition' });
   } finally {
-    // Release the connection back to the pool
     if (connection) connection.release();
-  }
-});
-
-// ========== DOMESTIC EXHIBITION ROUTES ==========
-
-// Get all domestic countries
-router.get('/domestic', async (req, res) => {
-  try {
-    const [countries] = await db.query(`
-      SELECT * FROM domestic_exhibition 
-      ORDER BY country_name ASC
-    `);
-    res.json(countries);
-  } catch (error) {
-    console.error('Error fetching domestic countries:', error);
-    res.status(500).json({ error: 'Error fetching domestic countries' });
-  }
-});
-
-// Add domestic country
-router.post('/domestic', async (req, res) => {
-  try {
-    const { country_name } = req.body;
-    
-    if (!country_name || country_name.trim() === '') {
-      return res.status(400).json({ error: 'Country name is required' });
-    }
-    
-    const [result] = await db.query(
-      'INSERT INTO domestic_exhibition (country_name) VALUES (?)',
-      [country_name.trim()]
-    );
-    
-    res.json({ 
-      message: 'Domestic country added successfully',
-      id: result.insertId 
-    });
-  } catch (error) {
-    console.error('Error adding domestic country:', error);
-    if (error.code === 'ER_DUP_ENTRY') {
-      res.status(400).json({ error: 'Country already exists' });
-    } else {
-      res.status(500).json({ error: 'Error adding domestic country' });
-    }
-  }
-});
-
-// Update domestic country
-router.put('/domestic/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { country_name } = req.body;
-    
-    if (!country_name || country_name.trim() === '') {
-      return res.status(400).json({ error: 'Country name is required' });
-    }
-    
-    await db.query(
-      'UPDATE domestic_exhibition SET country_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [country_name.trim(), id]
-    );
-    
-    res.json({ message: 'Domestic country updated successfully' });
-  } catch (error) {
-    console.error('Error updating domestic country:', error);
-    if (error.code === 'ER_DUP_ENTRY') {
-      res.status(400).json({ error: 'Country already exists' });
-    } else {
-      res.status(500).json({ error: 'Error updating domestic country' });
-    }
-  }
-});
-
-// Delete domestic country
-router.delete('/domestic/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    await db.query('DELETE FROM domestic_exhibition WHERE id = ?', [id]);
-    
-    res.json({ message: 'Domestic country deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting domestic country:', error);
-    res.status(500).json({ error: 'Error deleting domestic country' });
-  }
-});
-
-// Bulk add domestic countries
-router.post('/domestic/bulk', async (req, res) => {
-  try {
-    const { countries } = req.body;
-    
-    if (!Array.isArray(countries) || countries.length === 0) {
-      return res.status(400).json({ error: 'Countries array is required' });
-    }
-    
-    // Filter out empty country names
-    const validCountries = countries
-      .filter(country => country && country.trim() !== '')
-      .map(country => country.trim());
-    
-    if (validCountries.length === 0) {
-      return res.status(400).json({ error: 'No valid country names provided' });
-    }
-    
-    // Insert countries
-    const values = validCountries.map(country => [country]);
-    const [result] = await db.query(
-      'INSERT IGNORE INTO domestic_exhibition (country_name) VALUES ?',
-      [values]
-    );
-    
-    res.json({ 
-      message: `Added ${result.affectedRows} domestic countries successfully`,
-      added: result.affectedRows
-    });
-  } catch (error) {
-    console.error('Error adding bulk domestic countries:', error);
-    res.status(500).json({ error: 'Error adding domestic countries' });
   }
 });
 
 // ========== INTERNATIONAL EXHIBITION ROUTES ==========
 
-// Get all international countries
+// Get all international exhibitions with their cities
 router.get('/international', async (req, res) => {
   try {
-    const [countries] = await db.query(`
+    const [exhibitions] = await db.query(`
       SELECT * FROM international_exhibition 
-      ORDER BY country_name ASC
+      ORDER BY created_at DESC
     `);
-    res.json(countries);
+    
+    for (let exhibition of exhibitions) {
+      const [cities] = await db.query(
+        'SELECT id, city_name, image, price FROM international_exhibition_cities WHERE international_exhibition_id = ? ORDER BY created_at',
+        [exhibition.id]
+      );
+      exhibition.cities = cities || [];
+    }
+    
+    res.json(exhibitions);
   } catch (error) {
-    console.error('Error fetching international countries:', error);
-    res.status(500).json({ error: 'Error fetching international countries' });
+    console.error('Error fetching international exhibitions:', error);
+    res.status(500).json({ error: 'Error fetching international exhibitions' });
   }
 });
 
-// Add international country
-router.post('/international', async (req, res) => {
-  try {
-    const { country_name } = req.body;
-    
-    if (!country_name || country_name.trim() === '') {
-      return res.status(400).json({ error: 'Country name is required' });
-    }
-    
-    const [result] = await db.query(
-      'INSERT INTO international_exhibition (country_name) VALUES (?)',
-      [country_name.trim()]
-    );
-    
-    res.json({ 
-      message: 'International country added successfully',
-      id: result.insertId 
-    });
-  } catch (error) {
-    console.error('Error adding international country:', error);
-    if (error.code === 'ER_DUP_ENTRY') {
-      res.status(400).json({ error: 'Country already exists' });
-    } else {
-      res.status(500).json({ error: 'Error adding international country' });
-    }
-  }
-});
-
-// Update international country
-router.put('/international/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { country_name } = req.body;
-    
-    if (!country_name || country_name.trim() === '') {
-      return res.status(400).json({ error: 'Country name is required' });
-    }
-    
-    await db.query(
-      'UPDATE international_exhibition SET country_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-      [country_name.trim(), id]
-    );
-    
-    res.json({ message: 'International country updated successfully' });
-  } catch (error) {
-    console.error('Error updating international country:', error);
-    if (error.code === 'ER_DUP_ENTRY') {
-      res.status(400).json({ error: 'Country already exists' });
-    } else {
-      res.status(500).json({ error: 'Error updating international country' });
-    }
-  }
-});
-
-// Delete international country
-router.delete('/international/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    await db.query('DELETE FROM international_exhibition WHERE id = ?', [id]);
-    
-    res.json({ message: 'International country deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting international country:', error);
-    res.status(500).json({ error: 'Error deleting international country' });
-  }
-});
-
-// Bulk add international countries
-router.post('/international/bulk', async (req, res) => {
-  try {
-    const { countries } = req.body;
-    
-    if (!Array.isArray(countries) || countries.length === 0) {
-      return res.status(400).json({ error: 'Countries array is required' });
-    }
-    
-    // Filter out empty country names
-    const validCountries = countries
-      .filter(country => country && country.trim() !== '')
-      .map(country => country.trim());
-    
-    if (validCountries.length === 0) {
-      return res.status(400).json({ error: 'No valid country names provided' });
-    }
-    
-    // Insert countries
-    const values = validCountries.map(country => [country]);
-    const [result] = await db.query(
-      'INSERT IGNORE INTO international_exhibition (country_name) VALUES ?',
-      [values]
-    );
-    
-    res.json({ 
-      message: `Added ${result.affectedRows} international countries successfully`,
-      added: result.affectedRows
-    });
-  } catch (error) {
-    console.error('Error adding bulk international countries:', error);
-    res.status(500).json({ error: 'Error adding international countries' });
-  }
-});
-
-
-// ========== ADD THESE ROUTES TO YOUR BACKEND ==========
-
-// Get single domestic country
-router.get('/domestic/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    const [countries] = await db.query(
-      'SELECT * FROM domestic_exhibition WHERE id = ?',
-      [id]
-    );
-    
-    if (countries.length === 0) {
-      return res.status(404).json({ error: 'Country not found' });
-    }
-    
-    res.json(countries[0]);
-  } catch (error) {
-    console.error('Error fetching domestic country:', error);
-    res.status(500).json({ error: 'Error fetching domestic country' });
-  }
-});
-
-// Get single international country
+// Get single international exhibition with its cities
 router.get('/international/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
-    const [countries] = await db.query(
+    const [exhibitions] = await db.query(
       'SELECT * FROM international_exhibition WHERE id = ?',
       [id]
     );
     
-    if (countries.length === 0) {
-      return res.status(404).json({ error: 'Country not found' });
+    if (exhibitions.length === 0) {
+      return res.status(404).json({ error: 'Exhibition not found' });
     }
     
-    res.json(countries[0]);
+    const exhibition = exhibitions[0];
+    
+    const [cities] = await db.query(
+      'SELECT id, city_name, image, price FROM international_exhibition_cities WHERE international_exhibition_id = ? ORDER BY created_at',
+      [id]
+    );
+    
+    exhibition.cities = cities || [];
+    
+    res.json(exhibition);
   } catch (error) {
-    console.error('Error fetching international country:', error);
-    res.status(500).json({ error: 'Error fetching international country' });
+    console.error('Error fetching international exhibition:', error);
+    res.status(500).json({ error: 'Error fetching international exhibition' });
+  }
+});
+
+// Add new international exhibition with multiple cities
+router.post('/international', (req, res) => {
+  uploadMultiple(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    let connection;
+    try {
+      const { country_name, cityNames, prices } = req.body;
+      const files = req.files || [];
+      
+      if (!country_name || country_name.trim() === '') {
+        return res.status(400).json({ error: 'Category name is required' });
+      }
+      
+      let cityNamesArray = JSON.parse(cityNames || '[]');
+      let pricesArray = JSON.parse(prices || '[]');
+      
+      if (cityNamesArray.length === 0) {
+        return res.status(400).json({ error: 'At least one city is required' });
+      }
+      
+      if (cityNamesArray.length !== pricesArray.length) {
+        return res.status(400).json({ error: 'Mismatch between cities and prices' });
+      }
+      
+      if (cityNamesArray.length !== files.length) {
+        return res.status(400).json({ error: 'Please upload an image for each city' });
+      }
+      
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      
+      const [result] = await connection.query(
+        'INSERT INTO international_exhibition (country_name) VALUES (?)',
+        [country_name.trim()]
+      );
+      
+      const exhibitionId = result.insertId;
+      
+      for (let i = 0; i < cityNamesArray.length; i++) {
+        const cityName = cityNamesArray[i].trim();
+        const price = pricesArray[i];
+        const imageFile = files[i];
+        
+        if (!cityName) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'City name cannot be empty' });
+        }
+        
+        if (!price || price <= 0) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Valid price is required for each city' });
+        }
+        
+        await connection.query(
+          'INSERT INTO international_exhibition_cities (international_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+          [exhibitionId, cityName, imageFile.filename, price]
+        );
+      }
+      
+      await connection.commit();
+      
+      res.json({ 
+        message: 'International exhibition added successfully',
+        id: exhibitionId 
+      });
+    } catch (error) {
+      if (connection) await connection.rollback();
+      console.error('Error adding international exhibition:', error);
+      
+      if (req.files) {
+        req.files.forEach(file => {
+          const filePath = path.join('uploads/exhibition/', file.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        });
+      }
+      
+      res.status(500).json({ error: 'Error adding international exhibition' });
+    } finally {
+      if (connection) connection.release();
+    }
+  });
+});
+
+// Update international exhibition
+router.put('/international/:id', (req, res) => {
+  uploadMultiple(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    let connection;
+    try {
+      const { id } = req.params;
+      const { country_name, cityNames, prices, existingCityIds, existingImages } = req.body;
+      const files = req.files || [];
+      
+      if (!country_name || country_name.trim() === '') {
+        return res.status(400).json({ error: 'Category name is required' });
+      }
+      
+      let cityNamesArray = JSON.parse(cityNames || '[]');
+      let pricesArray = JSON.parse(prices || '[]');
+      let existingImagesArray = JSON.parse(existingImages || '[]');
+      
+      if (cityNamesArray.length === 0) {
+        return res.status(400).json({ error: 'At least one city is required' });
+      }
+      
+      if (cityNamesArray.length !== pricesArray.length) {
+        return res.status(400).json({ error: 'Mismatch between cities and prices' });
+      }
+      
+      const totalCities = cityNamesArray.length;
+      const totalImages = existingImagesArray.length + files.length;
+      
+      if (totalCities !== totalImages) {
+        return res.status(400).json({ error: 'Please ensure each city has an image' });
+      }
+      
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      
+      await connection.query(
+        'UPDATE international_exhibition SET country_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [country_name.trim(), id]
+      );
+      
+      const [oldCities] = await connection.query(
+        'SELECT id, image FROM international_exhibition_cities WHERE international_exhibition_id = ?',
+        [id]
+      );
+      
+      await connection.query('DELETE FROM international_exhibition_cities WHERE international_exhibition_id = ?', [id]);
+      
+      let fileIndex = 0;
+      let existingImageIndex = 0;
+      
+      for (let i = 0; i < cityNamesArray.length; i++) {
+        const cityName = cityNamesArray[i].trim();
+        const price = pricesArray[i];
+        
+        if (!cityName) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'City name cannot be empty' });
+        }
+        
+        if (!price || price <= 0) {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Valid price is required for each city' });
+        }
+        
+        let imageFilename;
+        
+        if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
+          imageFilename = existingImagesArray[existingImageIndex];
+          existingImageIndex++;
+        } else if (files.length > 0 && fileIndex < files.length) {
+          imageFilename = files[fileIndex].filename;
+          fileIndex++;
+        } else {
+          await connection.rollback();
+          return res.status(400).json({ error: 'Image missing for city: ' + cityName });
+        }
+        
+        await connection.query(
+          'INSERT INTO international_exhibition_cities (international_exhibition_id, city_name, image, price) VALUES (?, ?, ?, ?)',
+          [id, cityName, imageFilename, price]
+        );
+      }
+      
+      const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
+      
+      for (let oldCity of oldCities) {
+        if (!newImageFilenames.includes(oldCity.image)) {
+          const oldFilePath = path.join('uploads/exhibition/', oldCity.image);
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+          }
+        }
+      }
+      
+      await connection.commit();
+      
+      res.json({ message: 'International exhibition updated successfully' });
+    } catch (error) {
+      if (connection) await connection.rollback();
+      console.error('Error updating international exhibition:', error);
+      
+      if (req.files) {
+        req.files.forEach(file => {
+          const filePath = path.join('uploads/exhibition/', file.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        });
+      }
+      
+      res.status(500).json({ error: 'Error updating international exhibition' });
+    } finally {
+      if (connection) connection.release();
+    }
+  });
+});
+
+// Delete international exhibition
+router.delete('/international/:id', async (req, res) => {
+  let connection;
+  try {
+    const { id } = req.params;
+    
+    connection = await db.getConnection();
+    
+    const [cities] = await connection.query(
+      'SELECT image FROM international_exhibition_cities WHERE international_exhibition_id = ?',
+      [id]
+    );
+    
+    for (let city of cities) {
+      if (city.image) {
+        const filePath = path.join('uploads/exhibition/', city.image);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    }
+    
+    await connection.query('DELETE FROM international_exhibition WHERE id = ?', [id]);
+    
+    res.json({ message: 'International exhibition deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting international exhibition:', error);
+    res.status(500).json({ error: 'Error deleting international exhibition' });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
