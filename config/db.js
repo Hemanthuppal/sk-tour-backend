@@ -32,7 +32,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
   queueLimit: 0,
   // port: 4306
-  port: 3307
+  port: 3306
 });
 
 // Test connection

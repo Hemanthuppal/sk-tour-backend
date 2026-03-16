@@ -135,7 +135,7 @@ const bungalowRoutes = require('./routes/bunglow');
 const oneDayPicnicRoutes = require('./routes/onedaypicnic');
 const weekendGatewayRoutes = require('./routes/weekend');
 
-
+const Passport = require('./routes/Passport');
 
 
 // Update the static middleware to serve carousel images
@@ -198,7 +198,7 @@ app.use('/video-uploads', express.static(uploadsDir));
 app.use('/video-uploads/videos', express.static(videosDir));
 app.use('/api/leads', leadsRoutes);
 
-
+app.use('/api/passport', Passport);
 app.use('/api/carousel-images', carouselImagesRoutes);
 
 // === VIDEO CAROUSEL ROUTE ===
