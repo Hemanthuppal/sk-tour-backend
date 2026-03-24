@@ -792,7 +792,6 @@ router.delete('/international/:id', async (req, res) => {
   }
 });
 
-// ========== EXHIBITION DETAILS ROUTES ==========
 router.post('/domestic/:id/details', async (req, res) => {
   const exhibitionId = req.params.id;
   const details = req.body;
@@ -1108,7 +1107,6 @@ router.post('/domestic/:id/details', async (req, res) => {
     if (connection) connection.release();
   }
 });
-
 router.post('/international/:id/details', async (req, res) => {
   const exhibitionId = req.params.id;
   const details = req.body;
@@ -1156,9 +1154,9 @@ router.post('/international/:id/details', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           tourCode,
-          details.exhibition_name || exhibition[0].country_name,
+          details?.exhibition_name|| exhibition[0].country_name,
           'exhibition',
-          details.duration_days || 0,
+          details?.duration_days || 0 || 0,
           details.overview || null,
           details.base_price_adult || 0,
           details.emi_price || null,
@@ -1185,8 +1183,8 @@ router.post('/international/:id/details', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE exhibition_id = ?`,
         [
-          details.exhibition_name || exhibition[0].country_name,
-          details.duration_days || 0,
+          details?.exhibition_name|| exhibition[0].country_name,
+          details?.duration_days || 0 || 0,
           details.overview || null,
           details.base_price_adult || 0,
           details.emi_price || null,
@@ -1503,4 +1501,62 @@ router.get('/exhibition-images/:exhibition_id', async (req, res) => {
   }
 });
 
+
+
+
+// GET exhibition details
+router.get('/domestic/:id/details', async (req, res) => {
+  const exhibitionId = req.params.id;
+  let connection;
+
+  console.log('========================================');
+  console.log('📥 GET /domestic/:id/details');
+  console.log(`📌 Exhibition ID: ${exhibitionId}`);
+  console.log('========================================');
+
+  try {
+    connection = await db.getConnection();
+
+    // Verify exhibition exists
+    const [exhibition] = await connection.query(
+      'SELECT id, country_name FROM domestic_exhibition WHERE id = ?',
+      [exhibitionId]
+    );
+
+    if (exhibition.length === 0) {
+      return res.status(404).json({ 
+        error: `Exhibition not found with ID: ${exhibitionId}`,
+        exhibition_id: exhibitionId
+      });
+    }
+
+    const result = { exhibition: exhibition[0] };
+
+    // Fetch related tables
+    const tables = [
+      'tours', 'tour_itineraries', 'tour_departures', 'tour_costs',
+      'optional_tours', 'emi_options', 'tour_inclusions', 'tour_exclusions',
+      'tour_transports', 'tour_hotels', 'tour_booking_poi',
+      'tour_cancellation_policies', 'tour_instructions'
+    ];
+
+    for (const table of tables) {
+      const [rows] = await connection.query(
+        `SELECT * FROM ${table} WHERE exhibition_id = ?`,
+        [exhibitionId]
+      );
+      // Convert table name to camelCase key
+      const key = table.replace(/tour_|_/g, (match) => match === '_' ? '' : '');
+      result[key] = rows;
+    }
+
+    res.json({ success: true, data: result });
+
+  } catch (err) {
+    console.error('❌ Error fetching exhibition details:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
 module.exports = router;
