@@ -1540,15 +1540,31 @@ router.get('/domestic/:id/details', async (req, res) => {
       'tour_cancellation_policies', 'tour_instructions'
     ];
 
-    for (const table of tables) {
-      const [rows] = await connection.query(
-        `SELECT * FROM ${table} WHERE exhibition_id = ?`,
-        [exhibitionId]
-      );
-      // Convert table name to camelCase key
-      const key = table.replace(/tour_|_/g, (match) => match === '_' ? '' : '');
-      result[key] = rows;
-    }
+  for (const table of tables) {
+  let rows;
+
+  // ✅ ONLY CHANGE FOR tours
+  if (table === 'tours') {
+    [rows] = await connection.query(
+      `SELECT t.*, GROUP_CONCAT(c.city_name) AS city_name
+       FROM tours t
+       LEFT JOIN domestic_exhibition_cities c 
+       ON t.exhibition_id = c.domestic_exhibition_id  -- ✅ FIXED COLUMN
+       WHERE t.exhibition_id = ?
+       GROUP BY t.tour_id`,
+      [exhibitionId]
+    );
+  } else {
+    // ✅ SAME OLD QUERY
+    [rows] = await connection.query(
+      `SELECT * FROM ${table} WHERE exhibition_id = ?`,
+      [exhibitionId]
+    );
+  }
+
+  const key = table.replace(/tour_|_/g, (match) => match === '_' ? '' : '');
+  result[key] = rows;
+}
 
     res.json({ success: true, data: result });
 
