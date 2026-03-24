@@ -24,7 +24,7 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: function (req, file, cb) {
-    const filetypes = /jpeg|jpg|png|gif/;
+    const filetypes = /jpeg|jpg|png|gif|webp/;
     const mimetype = filetypes.test(file.mimetype);
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
     if (mimetype && extname) {
@@ -34,10 +34,9 @@ const upload = multer({
   }
 });
 
-// Helper function to handle multiple file uploads
 const uploadMultiple = upload.array('images', 10);
 
-// ========== ABOUT EXHIBITION ROUTES (unchanged) ==========
+// ========== ABOUT EXHIBITION ROUTES ==========
 router.get('/about', async (req, res) => {
   let connection;
   try {
@@ -164,9 +163,8 @@ router.post('/about', (req, res) => {
 });
 
 // ========== DOMESTIC EXHIBITION ROUTES ==========
-
-// Get all domestic exhibitions with their cities
 router.get('/domestic', async (req, res) => {
+  console.log('📥 GET /domestic');
   try {
     const [exhibitions] = await db.query(`
       SELECT * FROM domestic_exhibition 
@@ -188,8 +186,8 @@ router.get('/domestic', async (req, res) => {
   }
 });
 
-// Get single domestic exhibition with its cities
 router.get('/domestic/:id', async (req, res) => {
+  console.log(`📥 GET /domestic/${req.params.id}`);
   try {
     const { id } = req.params;
     
@@ -210,7 +208,6 @@ router.get('/domestic/:id', async (req, res) => {
     );
     
     exhibition.cities = cities || [];
-    
     res.json(exhibition);
   } catch (error) {
     console.error('Error fetching domestic exhibition:', error);
@@ -218,8 +215,8 @@ router.get('/domestic/:id', async (req, res) => {
   }
 });
 
-// Add new domestic exhibition (with optional cities)
 router.post('/domestic', (req, res) => {
+  console.log('📥 POST /domestic');
   uploadMultiple(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -234,7 +231,6 @@ router.post('/domestic', (req, res) => {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
-      // Parse the JSON strings if they exist
       let cityNamesArray = [];
       let pricesArray = [];
       
@@ -254,7 +250,6 @@ router.post('/domestic', (req, res) => {
         }
       }
       
-      // Validate if cities are provided
       if (cityNamesArray.length > 0) {
         if (cityNamesArray.length !== pricesArray.length) {
           return res.status(400).json({ error: 'Mismatch between cities and prices' });
@@ -268,7 +263,6 @@ router.post('/domestic', (req, res) => {
       connection = await db.getConnection();
       await connection.beginTransaction();
       
-      // Insert the main exhibition
       const [result] = await connection.query(
         'INSERT INTO domestic_exhibition (country_name) VALUES (?)',
         [country_name.trim()]
@@ -276,7 +270,6 @@ router.post('/domestic', (req, res) => {
       
       const exhibitionId = result.insertId;
       
-      // Insert cities only if they exist
       if (cityNamesArray.length > 0) {
         for (let i = 0; i < cityNamesArray.length; i++) {
           const cityName = cityNamesArray[i]?.trim();
@@ -310,7 +303,6 @@ router.post('/domestic', (req, res) => {
       if (connection) await connection.rollback();
       console.error('Error adding domestic exhibition:', error);
       
-      // Delete uploaded files if there was an error
       if (req.files) {
         req.files.forEach(file => {
           const filePath = path.join('uploads/exhibition/', file.filename);
@@ -327,8 +319,8 @@ router.post('/domestic', (req, res) => {
   });
 });
 
-// Update domestic exhibition
 router.put('/domestic/:id', (req, res) => {
+  console.log(`📥 PUT /domestic/${req.params.id}`);
   uploadMultiple(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -337,25 +329,21 @@ router.put('/domestic/:id', (req, res) => {
     let connection;
     try {
       const { id } = req.params;
-      const { country_name, cityNames, prices, existingCityIds, existingImages } = req.body;
+      const { country_name, cityNames, prices, existingImages } = req.body;
       const files = req.files || [];
       
       if (!country_name || country_name.trim() === '') {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
-      // Parse the JSON strings
       let cityNamesArray = [];
       let pricesArray = [];
-      let existingCityIdsArray = [];
       let existingImagesArray = [];
       
       if (cityNames) cityNamesArray = JSON.parse(cityNames || '[]');
       if (prices) pricesArray = JSON.parse(prices || '[]');
-      if (existingCityIds) existingCityIdsArray = JSON.parse(existingCityIds || '[]');
       if (existingImages) existingImagesArray = JSON.parse(existingImages || '[]');
       
-      // Validate if cities are provided
       if (cityNamesArray.length > 0) {
         if (cityNamesArray.length !== pricesArray.length) {
           return res.status(400).json({ error: 'Mismatch between cities and prices' });
@@ -372,22 +360,18 @@ router.put('/domestic/:id', (req, res) => {
       connection = await db.getConnection();
       await connection.beginTransaction();
       
-      // Update the main exhibition
       await connection.query(
         'UPDATE domestic_exhibition SET country_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
         [country_name.trim(), id]
       );
       
-      // Get existing cities to delete old images
       const [oldCities] = await connection.query(
         'SELECT id, image FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
         [id]
       );
       
-      // Delete old city records
       await connection.query('DELETE FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?', [id]);
       
-      // Insert updated cities only if there are any
       if (cityNamesArray.length > 0) {
         let fileIndex = 0;
         let existingImageIndex = 0;
@@ -408,7 +392,6 @@ router.put('/domestic/:id', (req, res) => {
           
           let imageFilename;
           
-          // Check if this city is using an existing image or a new uploaded image
           if (existingImagesArray.length > 0 && existingImageIndex < existingImagesArray.length) {
             imageFilename = existingImagesArray[existingImageIndex];
             existingImageIndex++;
@@ -426,7 +409,6 @@ router.put('/domestic/:id', (req, res) => {
           );
         }
         
-        // Delete old image files that are no longer used
         const newImageFilenames = existingImagesArray.concat(files.map(f => f.filename));
         
         for (let oldCity of oldCities) {
@@ -446,7 +428,6 @@ router.put('/domestic/:id', (req, res) => {
       if (connection) await connection.rollback();
       console.error('Error updating domestic exhibition:', error);
       
-      // Delete newly uploaded files if there was an error
       if (req.files) {
         req.files.forEach(file => {
           const filePath = path.join('uploads/exhibition/', file.filename);
@@ -463,21 +444,19 @@ router.put('/domestic/:id', (req, res) => {
   });
 });
 
-// Delete domestic exhibition
 router.delete('/domestic/:id', async (req, res) => {
+  console.log(`📥 DELETE /domestic/${req.params.id}`);
   let connection;
   try {
     const { id } = req.params;
     
     connection = await db.getConnection();
     
-    // Get all city images to delete files
     const [cities] = await connection.query(
       'SELECT image FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
       [id]
     );
     
-    // Delete image files
     for (let city of cities) {
       if (city.image) {
         const filePath = path.join('uploads/exhibition/', city.image);
@@ -487,7 +466,6 @@ router.delete('/domestic/:id', async (req, res) => {
       }
     }
     
-    // Delete the exhibition (cities will be deleted by CASCADE)
     await connection.query('DELETE FROM domestic_exhibition WHERE id = ?', [id]);
     
     res.json({ message: 'Domestic exhibition deleted successfully' });
@@ -500,9 +478,8 @@ router.delete('/domestic/:id', async (req, res) => {
 });
 
 // ========== INTERNATIONAL EXHIBITION ROUTES ==========
-
-// Get all international exhibitions with their cities
 router.get('/international', async (req, res) => {
+  console.log('📥 GET /international');
   try {
     const [exhibitions] = await db.query(`
       SELECT * FROM international_exhibition 
@@ -524,8 +501,8 @@ router.get('/international', async (req, res) => {
   }
 });
 
-// Get single international exhibition with its cities
 router.get('/international/:id', async (req, res) => {
+  console.log(`📥 GET /international/${req.params.id}`);
   try {
     const { id } = req.params;
     
@@ -546,7 +523,6 @@ router.get('/international/:id', async (req, res) => {
     );
     
     exhibition.cities = cities || [];
-    
     res.json(exhibition);
   } catch (error) {
     console.error('Error fetching international exhibition:', error);
@@ -554,8 +530,8 @@ router.get('/international/:id', async (req, res) => {
   }
 });
 
-// Add new international exhibition (with optional cities)
 router.post('/international', (req, res) => {
+  console.log('📥 POST /international');
   uploadMultiple(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -658,8 +634,8 @@ router.post('/international', (req, res) => {
   });
 });
 
-// Update international exhibition
 router.put('/international/:id', (req, res) => {
+  console.log(`📥 PUT /international/${req.params.id}`);
   uploadMultiple(req, res, async (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
@@ -668,7 +644,7 @@ router.put('/international/:id', (req, res) => {
     let connection;
     try {
       const { id } = req.params;
-      const { country_name, cityNames, prices, existingCityIds, existingImages } = req.body;
+      const { country_name, cityNames, prices, existingImages } = req.body;
       const files = req.files || [];
       
       if (!country_name || country_name.trim() === '') {
@@ -783,8 +759,8 @@ router.put('/international/:id', (req, res) => {
   });
 });
 
-// Delete international exhibition
 router.delete('/international/:id', async (req, res) => {
+  console.log(`📥 DELETE /international/${req.params.id}`);
   let connection;
   try {
     const { id } = req.params;
@@ -816,8 +792,552 @@ router.delete('/international/:id', async (req, res) => {
   }
 });
 
-// Bulk add domestic exhibitions (simple categories without cities)
+// ========== EXHIBITION DETAILS ROUTES ==========
+router.post('/domestic/:id/details', async (req, res) => {
+  const exhibitionId = req.params.id;
+  const details = req.body;
+  let connection;
+  
+  console.log('========================================');
+  console.log('📥 POST /domestic/:id/details');
+  console.log(`📌 Exhibition ID: ${exhibitionId}`);
+  console.log('========================================');
+  
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    
+    // Verify exhibition exists
+    const [exhibition] = await connection.query(
+      'SELECT id, country_name FROM domestic_exhibition WHERE id = ?',
+      [exhibitionId]
+    );
+    
+    if (exhibition.length === 0) {
+      console.log(`❌ Exhibition not found with ID: ${exhibitionId}`);
+      await connection.rollback();
+      return res.status(404).json({ 
+        error: `Exhibition not found with ID: ${exhibitionId}`,
+        exhibition_id: exhibitionId
+      });
+    }
+    
+    console.log(`✅ Found exhibition: ${exhibition[0].country_name}`);
+    
+    // Check if entry exists in tours table
+    const [existingTour] = await connection.query(
+      'SELECT * FROM tours WHERE exhibition_id = ?',
+      [exhibitionId]
+    );
+    
+    if (existingTour.length === 0) {
+      const tourCode = `EXH${exhibitionId}`;
+      console.log(`Creating new tour entry with code: ${tourCode}`);
+      await connection.query(
+        `INSERT INTO tours 
+        (tour_code, title, tour_type, duration_days, overview,
+         base_price_adult, emi_price, cost_remarks, hotel_remarks,
+         transport_remarks, emi_remarks, booking_poi_remarks, 
+         cancellation_remarks, optional_tour_remarks, status, exhibition_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          tourCode,
+          details.exhibition_name || exhibition[0].country_name,
+          'exhibition',
+          details.duration_days || 0,
+          details.overview || null,
+          details.base_price_adult || 0,
+          details.emi_price || null,
+          details.cost_remarks || null,
+          details.hotel_remarks || null,
+          details.transport_remarks || null,
+          details.emi_remarks || null,
+          details.booking_poi_remarks || null,
+          details.cancellation_remarks || null,
+          details.optional_tour_remarks || null,
+          1,
+          exhibitionId
+        ]
+      );
+      console.log(`✅ Created tour entry with exhibition_id: ${exhibitionId}`);
+    } else {
+      console.log(`Updating existing tour entry for exhibition: ${exhibitionId}`);
+      await connection.query(
+        `UPDATE tours SET 
+          title = ?, duration_days = ?, overview = ?,
+          base_price_adult = ?, emi_price = ?,
+          cost_remarks = ?, hotel_remarks = ?, transport_remarks = ?,
+          emi_remarks = ?, booking_poi_remarks = ?, cancellation_remarks = ?,
+          optional_tour_remarks = ?, updated_at = NOW()
+        WHERE exhibition_id = ?`,
+        [
+          details.exhibition_name || exhibition[0].country_name,
+          details.duration_days || 0,
+          details.overview || null,
+          details.base_price_adult || 0,
+          details.emi_price || null,
+          details.cost_remarks || null,
+          details.hotel_remarks || null,
+          details.transport_remarks || null,
+          details.emi_remarks || null,
+          details.booking_poi_remarks || null,
+          details.cancellation_remarks || null,
+          details.optional_tour_remarks || null,
+          exhibitionId
+        ]
+      );
+      console.log(`✅ Updated tour entry for exhibition: ${exhibitionId}`);
+    }
+    
+    // ITINERARIES
+    await connection.query('DELETE FROM tour_itineraries WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.itineraries && Array.isArray(details.itineraries) && details.itineraries.length > 0) {
+      const values = details.itineraries.map(i => [
+        null,
+        exhibitionId,
+        i.day,
+        i.title,
+        i.description || null,
+        i.meals || null
+      ]);
+      await connection.query(
+        'INSERT INTO tour_itineraries (tour_id, exhibition_id, day, title, description, meals) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} itineraries`);
+    }
+    
+    // DEPARTURES
+    await connection.query('DELETE FROM tour_departures WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.departures && Array.isArray(details.departures) && details.departures.length > 0) {
+      const values = details.departures.map(d => [
+        null,
+        exhibitionId,
+        d.description || null,
+        null,
+        null,
+        0,
+        0,
+        null,
+        null,
+        null,
+        'Available',
+        'Exhibition',
+        null,
+        null,
+        d.description || null
+      ]);
+      await connection.query(
+        `INSERT INTO tour_departures 
+        (tour_id, exhibition_id, description, departure_date, return_date, 
+         total_seats, booked_seats, adult_price, child_price, infant_price,
+         status, tour_type, start_date, end_date, departure_text)
+         VALUES ?`,
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} departures`);
+    }
+    
+    // TOUR COSTS
+    await connection.query('DELETE FROM tour_costs WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.tour_costs && Array.isArray(details.tour_costs) && details.tour_costs.length > 0) {
+      const values = details.tour_costs.map(c => [
+        null,
+        exhibitionId,
+        c.pax,
+        c.standard_hotel || null,
+        c.deluxe_hotel || null,
+        c.executive_hotel || null,
+        c.child_with_bed || null,
+        c.child_no_bed || null,
+        c.remarks || null
+      ]);
+      await connection.query(
+        'INSERT INTO tour_costs (tour_id, exhibition_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, remarks) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} cost rows`);
+    }
+    
+    // OPTIONAL TOURS
+    await connection.query('DELETE FROM optional_tours WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.optional_tours && Array.isArray(details.optional_tours) && details.optional_tours.length > 0) {
+      const values = details.optional_tours.map(o => [
+        null,
+        exhibitionId,
+        o.tour_name,
+        o.adult_price || null,
+        o.child_price || null
+      ]);
+      await connection.query(
+        'INSERT INTO optional_tours (tour_id, exhibition_id, tour_name, adult_price, child_price) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} optional tours`);
+    }
+    
+    // EMI OPTIONS
+    await connection.query('DELETE FROM emi_options WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.emi_options && Array.isArray(details.emi_options) && details.emi_options.length > 0 && details.emi_loan_amount) {
+      const values = details.emi_options.map(e => [
+        null,
+        exhibitionId,
+        details.emi_loan_amount,
+        e.particulars,
+        e.months,
+        e.emi
+      ]);
+      await connection.query(
+        'INSERT INTO emi_options (tour_id, exhibition_id, loan_amount, particulars, months, emi) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} EMI options`);
+    }
+    
+    // INCLUSIONS
+    await connection.query('DELETE FROM tour_inclusions WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.inclusions && Array.isArray(details.inclusions) && details.inclusions.length > 0) {
+      const values = details.inclusions.map(i => [null, exhibitionId, i]);
+      await connection.query(
+        'INSERT INTO tour_inclusions (tour_id, exhibition_id, item) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} inclusions`);
+    }
+    
+    // EXCLUSIONS
+    await connection.query('DELETE FROM tour_exclusions WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.exclusions && Array.isArray(details.exclusions) && details.exclusions.length > 0) {
+      const values = details.exclusions.map(e => [null, exhibitionId, e]);
+      await connection.query(
+        'INSERT INTO tour_exclusions (tour_id, exhibition_id, item) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} exclusions`);
+    }
+    
+    // TRANSPORTS
+    await connection.query('DELETE FROM tour_transports WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.transports && Array.isArray(details.transports) && details.transports.length > 0) {
+      const values = details.transports.map((t, idx) => [
+        t.description || null,
+        null, null, null, null, null, null, null, null, null, null,
+        idx + 1,
+        null,
+        exhibitionId
+      ]);
+      await connection.query(
+        `INSERT INTO tour_transports 
+        (description, airline, flight_no, from_city, from_date, from_time,
+         to_city, to_date, to_time, via, sort_order, tour_id, exhibition_id)
+         VALUES ?`,
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} transports`);
+    }
+    
+    // HOTELS
+    await connection.query('DELETE FROM tour_hotels WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.hotels && Array.isArray(details.hotels) && details.hotels.length > 0) {
+      const values = details.hotels.map(h => [
+        null,
+        exhibitionId,
+        h.city || null,
+        h.nights || null,
+        h.standard_hotel_name || null,
+        h.deluxe_hotel_name || null,
+        h.executive_hotel_name || null
+      ]);
+      await connection.query(
+        `INSERT INTO tour_hotels 
+        (tour_id, exhibition_id, city, nights, standard_hotel_name, deluxe_hotel_name, executive_hotel_name)
+         VALUES ?`,
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} hotels`);
+    }
+    
+    // BOOKING POI
+    await connection.query('DELETE FROM tour_booking_poi WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.booking_pois && Array.isArray(details.booking_pois) && details.booking_pois.length > 0) {
+      const values = details.booking_pois.map((p, idx) => [
+        null,
+        exhibitionId,
+        null,
+        p.item,
+        idx + 1,
+        p.amount_details || null
+      ]);
+      await connection.query(
+        `INSERT INTO tour_booking_poi 
+        (tour_id, exhibition_id, title, item, sort_order, amount_details)
+         VALUES ?`,
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} booking POIs`);
+    }
+    
+    // CANCELLATION POLICIES
+    await connection.query('DELETE FROM tour_cancellation_policies WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.cancellation_policies && Array.isArray(details.cancellation_policies) && details.cancellation_policies.length > 0) {
+      const values = details.cancellation_policies.map((c, idx) => [
+        null,
+        exhibitionId,
+        c.cancellation_policy || null,
+        idx + 1,
+        c.charges || null
+      ]);
+      await connection.query(
+        `INSERT INTO tour_cancellation_policies 
+        (tour_id, exhibition_id, cancellation_policy, sort_order, charges)
+         VALUES ?`,
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} cancellation policies`);
+    }
+    
+    // INSTRUCTIONS
+    await connection.query('DELETE FROM tour_instructions WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.instructions && Array.isArray(details.instructions) && details.instructions.length > 0) {
+      const values = details.instructions.map((i, idx) => [
+        null,
+        exhibitionId,
+        i,
+        idx + 1
+      ]);
+      await connection.query(
+        'INSERT INTO tour_instructions (tour_id, exhibition_id, item, sort_order) VALUES ?',
+        [values]
+      );
+      console.log(`✅ Inserted ${values.length} instructions`);
+    }
+    
+    await connection.commit();
+    
+    console.log('========================================');
+    console.log('✅ EXHIBITION DETAILS SAVED SUCCESSFULLY!');
+    console.log(`📌 Exhibition ID: ${exhibitionId}`);
+    console.log('========================================');
+    
+    res.json({ 
+      success: true, 
+      message: 'Exhibition details saved successfully',
+      exhibition_id: exhibitionId
+    });
+    
+  } catch (err) {
+    if (connection) await connection.rollback();
+    console.error('❌ Error saving exhibition details:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+router.post('/international/:id/details', async (req, res) => {
+  const exhibitionId = req.params.id;
+  const details = req.body;
+  let connection;
+  
+  console.log('========================================');
+  console.log('📥 POST /international/:id/details');
+  console.log(`📌 Exhibition ID: ${exhibitionId}`);
+  console.log('========================================');
+  
+  try {
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    
+    const [exhibition] = await connection.query(
+      'SELECT id, country_name FROM international_exhibition WHERE id = ?',
+      [exhibitionId]
+    );
+    
+    if (exhibition.length === 0) {
+      console.log(`❌ International exhibition not found with ID: ${exhibitionId}`);
+      await connection.rollback();
+      return res.status(404).json({ 
+        error: `Exhibition not found with ID: ${exhibitionId}`,
+        exhibition_id: exhibitionId
+      });
+    }
+    
+    console.log(`✅ Found international exhibition: ${exhibition[0].country_name}`);
+    
+    const [existingTour] = await connection.query(
+      'SELECT * FROM tours WHERE exhibition_id = ?',
+      [exhibitionId]
+    );
+    
+    if (existingTour.length === 0) {
+      const tourCode = `INTEXH${exhibitionId}`;
+      console.log(`Creating new tour entry with code: ${tourCode}`);
+      await connection.query(
+        `INSERT INTO tours 
+        (tour_code, title, tour_type, duration_days, overview,
+         base_price_adult, emi_price, cost_remarks, hotel_remarks,
+         transport_remarks, emi_remarks, booking_poi_remarks, 
+         cancellation_remarks, optional_tour_remarks, status, exhibition_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          tourCode,
+          details.exhibition_name || exhibition[0].country_name,
+          'exhibition',
+          details.duration_days || 0,
+          details.overview || null,
+          details.base_price_adult || 0,
+          details.emi_price || null,
+          details.cost_remarks || null,
+          details.hotel_remarks || null,
+          details.transport_remarks || null,
+          details.emi_remarks || null,
+          details.booking_poi_remarks || null,
+          details.cancellation_remarks || null,
+          details.optional_tour_remarks || null,
+          1,
+          exhibitionId
+        ]
+      );
+      console.log(`✅ Created tour entry with exhibition_id: ${exhibitionId}`);
+    } else {
+      console.log(`Updating existing tour entry for exhibition: ${exhibitionId}`);
+      await connection.query(
+        `UPDATE tours SET 
+          title = ?, duration_days = ?, overview = ?,
+          base_price_adult = ?, emi_price = ?,
+          cost_remarks = ?, hotel_remarks = ?, transport_remarks = ?,
+          emi_remarks = ?, booking_poi_remarks = ?, cancellation_remarks = ?,
+          optional_tour_remarks = ?, updated_at = NOW()
+        WHERE exhibition_id = ?`,
+        [
+          details.exhibition_name || exhibition[0].country_name,
+          details.duration_days || 0,
+          details.overview || null,
+          details.base_price_adult || 0,
+          details.emi_price || null,
+          details.cost_remarks || null,
+          details.hotel_remarks || null,
+          details.transport_remarks || null,
+          details.emi_remarks || null,
+          details.booking_poi_remarks || null,
+          details.cancellation_remarks || null,
+          details.optional_tour_remarks || null,
+          exhibitionId
+        ]
+      );
+      console.log(`✅ Updated tour entry for exhibition: ${exhibitionId}`);
+    }
+    
+    // Process all sections (same as domestic)
+    await connection.query('DELETE FROM tour_itineraries WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.itineraries && Array.isArray(details.itineraries) && details.itineraries.length > 0) {
+      const values = details.itineraries.map(i => [null, exhibitionId, i.day, i.title, i.description || null, i.meals || null]);
+      await connection.query('INSERT INTO tour_itineraries (tour_id, exhibition_id, day, title, description, meals) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} itineraries`);
+    }
+    
+    await connection.query('DELETE FROM tour_departures WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.departures && Array.isArray(details.departures) && details.departures.length > 0) {
+      const values = details.departures.map(d => [null, exhibitionId, d.description || null, null, null, 0, 0, null, null, null, 'Available', 'Exhibition', null, null, d.description || null]);
+      await connection.query(`INSERT INTO tour_departures (tour_id, exhibition_id, description, departure_date, return_date, total_seats, booked_seats, adult_price, child_price, infant_price, status, tour_type, start_date, end_date, departure_text) VALUES ?`, [values]);
+      console.log(`✅ Inserted ${values.length} departures`);
+    }
+    
+    await connection.query('DELETE FROM tour_costs WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.tour_costs && Array.isArray(details.tour_costs) && details.tour_costs.length > 0) {
+      const values = details.tour_costs.map(c => [null, exhibitionId, c.pax, c.standard_hotel || null, c.deluxe_hotel || null, c.executive_hotel || null, c.child_with_bed || null, c.child_no_bed || null, c.remarks || null]);
+      await connection.query('INSERT INTO tour_costs (tour_id, exhibition_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, remarks) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} cost rows`);
+    }
+    
+    await connection.query('DELETE FROM optional_tours WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.optional_tours && Array.isArray(details.optional_tours) && details.optional_tours.length > 0) {
+      const values = details.optional_tours.map(o => [null, exhibitionId, o.tour_name, o.adult_price || null, o.child_price || null]);
+      await connection.query('INSERT INTO optional_tours (tour_id, exhibition_id, tour_name, adult_price, child_price) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} optional tours`);
+    }
+    
+    await connection.query('DELETE FROM emi_options WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.emi_options && Array.isArray(details.emi_options) && details.emi_options.length > 0 && details.emi_loan_amount) {
+      const values = details.emi_options.map(e => [null, exhibitionId, details.emi_loan_amount, e.particulars, e.months, e.emi]);
+      await connection.query('INSERT INTO emi_options (tour_id, exhibition_id, loan_amount, particulars, months, emi) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} EMI options`);
+    }
+    
+    await connection.query('DELETE FROM tour_inclusions WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.inclusions && Array.isArray(details.inclusions) && details.inclusions.length > 0) {
+      const values = details.inclusions.map(i => [null, exhibitionId, i]);
+      await connection.query('INSERT INTO tour_inclusions (tour_id, exhibition_id, item) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} inclusions`);
+    }
+    
+    await connection.query('DELETE FROM tour_exclusions WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.exclusions && Array.isArray(details.exclusions) && details.exclusions.length > 0) {
+      const values = details.exclusions.map(e => [null, exhibitionId, e]);
+      await connection.query('INSERT INTO tour_exclusions (tour_id, exhibition_id, item) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} exclusions`);
+    }
+    
+    await connection.query('DELETE FROM tour_transports WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.transports && Array.isArray(details.transports) && details.transports.length > 0) {
+      const values = details.transports.map((t, idx) => [t.description || null, null, null, null, null, null, null, null, null, null, null, idx + 1, null, exhibitionId]);
+      await connection.query(`INSERT INTO tour_transports (description, airline, flight_no, from_city, from_date, from_time, to_city, to_date, to_time, via, sort_order, tour_id, exhibition_id) VALUES ?`, [values]);
+      console.log(`✅ Inserted ${values.length} transports`);
+    }
+    
+    await connection.query('DELETE FROM tour_hotels WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.hotels && Array.isArray(details.hotels) && details.hotels.length > 0) {
+      const values = details.hotels.map(h => [null, exhibitionId, h.city || null, h.nights || null, h.standard_hotel_name || null, h.deluxe_hotel_name || null, h.executive_hotel_name || null]);
+      await connection.query(`INSERT INTO tour_hotels (tour_id, exhibition_id, city, nights, standard_hotel_name, deluxe_hotel_name, executive_hotel_name) VALUES ?`, [values]);
+      console.log(`✅ Inserted ${values.length} hotels`);
+    }
+    
+    await connection.query('DELETE FROM tour_booking_poi WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.booking_pois && Array.isArray(details.booking_pois) && details.booking_pois.length > 0) {
+      const values = details.booking_pois.map((p, idx) => [null, exhibitionId, null, p.item, idx + 1, p.amount_details || null]);
+      await connection.query(`INSERT INTO tour_booking_poi (tour_id, exhibition_id, title, item, sort_order, amount_details) VALUES ?`, [values]);
+      console.log(`✅ Inserted ${values.length} booking POIs`);
+    }
+    
+    await connection.query('DELETE FROM tour_cancellation_policies WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.cancellation_policies && Array.isArray(details.cancellation_policies) && details.cancellation_policies.length > 0) {
+      const values = details.cancellation_policies.map((c, idx) => [null, exhibitionId, c.cancellation_policy || null, idx + 1, c.charges || null]);
+      await connection.query(`INSERT INTO tour_cancellation_policies (tour_id, exhibition_id, cancellation_policy, sort_order, charges) VALUES ?`, [values]);
+      console.log(`✅ Inserted ${values.length} cancellation policies`);
+    }
+    
+    await connection.query('DELETE FROM tour_instructions WHERE exhibition_id = ?', [exhibitionId]);
+    if (details.instructions && Array.isArray(details.instructions) && details.instructions.length > 0) {
+      const values = details.instructions.map((i, idx) => [null, exhibitionId, i, idx + 1]);
+      await connection.query('INSERT INTO tour_instructions (tour_id, exhibition_id, item, sort_order) VALUES ?', [values]);
+      console.log(`✅ Inserted ${values.length} instructions`);
+    }
+    
+    await connection.commit();
+    
+    console.log('========================================');
+    console.log('✅ INTERNATIONAL EXHIBITION DETAILS SAVED SUCCESSFULLY!');
+    console.log(`📌 Exhibition ID: ${exhibitionId}`);
+    console.log('========================================');
+    
+    res.json({ 
+      success: true, 
+      message: 'Exhibition details saved successfully',
+      exhibition_id: exhibitionId
+    });
+    
+  } catch (err) {
+    if (connection) await connection.rollback();
+    console.error('❌ Error saving international exhibition details:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// ========== BULK ROUTES ==========
 router.post('/domestic/bulk', async (req, res) => {
+  console.log('📥 POST /domestic/bulk');
   try {
     const { countries } = req.body;
     
@@ -849,8 +1369,8 @@ router.post('/domestic/bulk', async (req, res) => {
   }
 });
 
-// Bulk add international exhibitions (simple categories without cities)
 router.post('/international/bulk', async (req, res) => {
+  console.log('📥 POST /international/bulk');
   try {
     const { countries } = req.body;
     
@@ -879,6 +1399,132 @@ router.post('/international/bulk', async (req, res) => {
   } catch (error) {
     console.error('Error adding bulk international exhibitions:', error);
     res.status(500).json({ error: 'Error adding international exhibitions' });
+  }
+});
+
+// ========== IMAGE ROUTES ==========
+router.post('/exhibition-images/upload/:exhibition_id', uploadMultiple, async (req, res) => {
+  const exhibitionId = req.params.exhibition_id;
+  const files = req.files || [];
+  
+  console.log(`📥 POST /exhibition-images/upload/${exhibitionId}`);
+  
+  if (!files.length) {
+    return res.status(400).json({ message: "No files uploaded" });
+  }
+  
+  const connection = await db.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const baseUrl = `${req.protocol}://${req.get('host')}/uploads/exhibition/`;
+    
+    const values = files.map(file => [
+      null,
+      exhibitionId,
+      baseUrl + file.filename,
+      null,
+      0
+    ]);
+    
+    await connection.query(
+      'INSERT INTO tour_images (tour_id, exhibition_id, url, caption, is_cover) VALUES ?',
+      [values]
+    );
+    
+    await connection.commit();
+    
+    res.status(201).json({
+      message: `${files.length} image(s) uploaded successfully`,
+      uploaded: files.map(f => baseUrl + f.filename)
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error('Error uploading images:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+router.put('/exhibition-images/cover/:image_id', async (req, res) => {
+  console.log(`📥 PUT /exhibition-images/cover/${req.params.image_id}`);
+  const connection = await db.getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const [img] = await connection.query(
+      'SELECT exhibition_id FROM tour_images WHERE image_id = ?',
+      [req.params.image_id]
+    );
+    
+    if (img.length === 0) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+    
+    await connection.query(
+      'UPDATE tour_images SET is_cover = 0 WHERE exhibition_id = ?',
+      [img[0].exhibition_id]
+    );
+    
+    await connection.query(
+      'UPDATE tour_images SET is_cover = 1 WHERE image_id = ?',
+      [req.params.image_id]
+    );
+    
+    await connection.commit();
+    res.json({ message: "Cover image updated successfully" });
+  } catch (err) {
+    await connection.rollback();
+    console.error('Error setting cover image:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    connection.release();
+  }
+});
+
+router.delete('/exhibition-images/:image_id', async (req, res) => {
+  console.log(`📥 DELETE /exhibition-images/${req.params.image_id}`);
+  try {
+    const [img] = await db.query(
+      'SELECT url FROM tour_images WHERE image_id = ?',
+      [req.params.image_id]
+    );
+    
+    if (img.length === 0) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+    
+    const urlPath = img[0].url;
+    const filename = urlPath.split('/').pop();
+    const filePath = path.join('uploads/exhibition/', filename);
+    
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    
+    await db.query('DELETE FROM tour_images WHERE image_id = ?', [req.params.image_id]);
+    
+    res.json({ message: "Image deleted successfully" });
+  } catch (err) {
+    console.error('Error deleting image:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/exhibition-images/:exhibition_id', async (req, res) => {
+  console.log(`📥 GET /exhibition-images/${req.params.exhibition_id}`);
+  try {
+    const [rows] = await db.query(
+      'SELECT * FROM tour_images WHERE exhibition_id = ? ORDER BY is_cover DESC, image_id ASC',
+      [req.params.exhibition_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('Error fetching images:', err);
+    res.status(500).json({ error: err.message });
   }
 });
 
