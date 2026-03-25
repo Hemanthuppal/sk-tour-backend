@@ -2004,4 +2004,95 @@ router.delete('/exhibition-images/:image_id', async (req, res) => {
 });
 
 
+// ========== GET INTERNATIONAL EXHIBITION DETAILS ==========
+router.get('/international/:id/details', async (req, res) => {
+  const exhibitionId = req.params.id;
+  let connection;
+
+  console.log('========================================');
+  console.log('📥 GET /international/:id/details');
+  console.log(`📌 Exhibition ID: ${exhibitionId}`);
+  console.log('========================================');
+
+  try {
+    connection = await db.getConnection();
+
+    // Verify international exhibition exists
+    const [exhibition] = await connection.query(
+      'SELECT id, country_name FROM international_exhibition WHERE id = ?',
+      [exhibitionId]
+    );
+
+    if (exhibition.length === 0) {
+      return res.status(404).json({ 
+        error: `International exhibition not found with ID: ${exhibitionId}`,
+        exhibition_id: exhibitionId
+      });
+    }
+
+    const result = { exhibition: exhibition[0] };
+
+    // Fetch related tables
+    const tables = [
+      'tours', 'tour_itineraries', 'tour_departures', 'tour_costs',
+      'optional_tours', 'emi_options', 'tour_inclusions', 'tour_exclusions',
+      'tour_transports', 'tour_hotels', 'tour_booking_poi',
+      'tour_cancellation_policies', 'tour_instructions'
+    ];
+
+    for (const table of tables) {
+      let rows;
+
+      if (table === 'tours') {
+        [rows] = await connection.query(
+          `SELECT t.*, GROUP_CONCAT(c.city_name) AS city_name
+           FROM tours t
+           LEFT JOIN international_exhibition_cities c 
+           ON t.exhibition_id = c.international_exhibition_id 
+           WHERE t.exhibition_id = ?
+           GROUP BY t.tour_id`,
+          [exhibitionId]
+        );
+      } else {
+        [rows] = await connection.query(
+          `SELECT * FROM ${table} WHERE exhibition_id = ?`,
+          [exhibitionId]
+        );
+      }
+
+      const key = table.replace(/tour_|_/g, (match) => match === '_' ? '' : '');
+      result[key] = rows;
+    }
+
+    // Transform the response to match the structure shown in your example
+    const transformedResponse = {
+      success: true,
+      data: {
+        exhibition: result.exhibition,
+        tours: result.tours || [],
+        itineraries: result.itineraries || [],
+        departures: result.departures || [],
+        costs: result.costs || [],
+        optionaltours: result.optionaltours || [],
+        emioptions: result.emioptions || [],
+        inclusions: result.inclusions || [],
+        exclusions: result.exclusions || [],
+        transports: result.transports || [],
+        hotels: result.hotels || [],
+        bookingpoi: result.bookingpoi || [],
+        cancellationpolicies: result.cancellationpolicies || [],
+        instructions: result.instructions || []
+      }
+    };
+
+    res.json(transformedResponse);
+
+  } catch (err) {
+    console.error('❌ Error fetching international exhibition details:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
 module.exports = router;
