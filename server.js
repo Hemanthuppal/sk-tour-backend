@@ -166,6 +166,10 @@ app.use(
 );
 
 
+// Add this line with your other static middleware
+app.use('/uploads/exhibition/visa', express.static(path.join(__dirname, 'uploads/exhibition/visa')));
+
+
 // ✅ Existing uploads (SECOND)
 // app.use(
 //   '/uploads',
