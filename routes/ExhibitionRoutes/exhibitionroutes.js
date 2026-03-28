@@ -1815,12 +1815,19 @@ router.get('/domestic/:id/details', async (req, res) => {
 
     const result = { exhibition: exhibition[0] };
 
-    // Fetch tours data
-    const [tours] = await connection.query(
-      `SELECT t.* FROM tours t WHERE t.exhibition_id = ?`,
-      [exhibitionId]
-    );
-    result.tours = tours || [];
+  const [tours] = await connection.query(
+  `SELECT 
+      t.*,
+      c.state_name,
+      c.city_name
+   FROM tours t
+   LEFT JOIN domestic_exhibition_cities c 
+     ON t.exhibition_id = c.domestic_exhibition_id
+   WHERE t.exhibition_id = ?`,
+  [exhibitionId]
+);
+
+result.tours = tours || [];
 
     // Fetch itineraries
     const [itineraries] = await connection.query(
@@ -1962,11 +1969,19 @@ router.get('/international/:id/details', async (req, res) => {
     const result = { exhibition: exhibition[0] };
 
     // Fetch tours data
-    const [tours] = await connection.query(
-      `SELECT t.* FROM tours t WHERE t.exhibition_id = ?`,
-      [exhibitionId]
-    );
-    result.tours = tours || [];
+ const [tours] = await connection.query(
+  `SELECT 
+      t.*,
+      c.city_name,
+      c.country_name
+   FROM tours t
+   LEFT JOIN international_exhibition_cities c 
+     ON t.exhibition_id = c.international_exhibition_id
+   WHERE t.exhibition_id = ?`,
+  [exhibitionId]
+);
+
+result.tours = tours || [];
 
     // Fetch itineraries
     const [itineraries] = await connection.query(
@@ -2058,11 +2073,23 @@ router.get('/international/:id/details', async (req, res) => {
       [exhibitionId]
     );
     
-    const [visaForms] = await connection.query(
-      'SELECT * FROM tour_visa_forms WHERE exhibition_id = ? ORDER BY row_order, created_at',
-      [exhibitionId]
-    );
-    
+ const [visaForms] = await connection.query(
+  `SELECT 
+      form_id,
+      tour_id,
+      exhibition_id,
+      visa_type,
+      download_action,
+      fill_action,
+      action1_file,
+      action2_file,
+      remarks,
+      row_order
+   FROM tour_visa_forms 
+   WHERE exhibition_id = ?
+   ORDER BY row_order, created_at`,
+  [exhibitionId]
+);
     const [visaFees] = await connection.query(
       'SELECT * FROM tour_visa_fees WHERE exhibition_id = ? ORDER BY row_order, created_at',
       [exhibitionId]
