@@ -1186,44 +1186,38 @@ router.post('/domestic/:id/details', async (req, res) => {
       );
     }
 
-    // DEPARTURES
+    // DEPARTURES - Updated with hotel star rating structure
     await connection.query('DELETE FROM tour_departures WHERE exhibition_id = ?', [exhibitionId]);
     if (details.departures?.length) {
-      const values = details.departures.map(d => [
-        exhibitionId,
-        d.description || null,
-        null, null, 0, 0, null, null, null,
-        'Available',
-        'Exhibition',
-        d.description || null
-      ]);
-      await connection.query(
-        `INSERT INTO tour_departures 
-        (exhibition_id, description, departure_date, return_date, 
-         total_seats, booked_seats, adult_price, child_price, infant_price,
-         status, tour_type, departure_text)
-         VALUES ?`,
-        [values]
-      );
-    }
-
-    // TOUR COSTS
-    await connection.query('DELETE FROM tour_costs WHERE exhibition_id = ?', [exhibitionId]);
-    if (details.tour_costs?.length) {
-      const values = details.tour_costs.map(c => [
-        exhibitionId,
-        c.pax,
-        c.standard_hotel || null,
-        c.deluxe_hotel || null,
-        c.executive_hotel || null,
-        c.child_with_bed || null,
-        c.child_no_bed || null,
-        c.remarks || null
-      ]);
-      await connection.query(
-        'INSERT INTO tour_costs (exhibition_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, remarks) VALUES ?',
-        [values]
-      );
+      for (const dep of details.departures) {
+        await connection.query(
+          `INSERT INTO tour_departures 
+          (exhibition_id, start_date, end_date, status, description,
+           three_star_twin, three_star_triple, three_star_single,
+           four_star_twin, four_star_triple, four_star_single,
+           five_star_twin, five_star_triple, five_star_single,
+           tour_type, departure_text)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            exhibitionId,
+            dep.start_date || null,
+            dep.end_date || null,
+            dep.status || 'Available',
+            dep.description || null,
+            dep.standard_twin || null,
+            dep.standard_triple || null,
+            dep.standard_single || null,
+            dep.deluxe_twin || null,
+            dep.deluxe_triple || null,
+            dep.deluxe_single || null,
+            dep.luxury_twin || null,
+            dep.luxury_triple || null,
+            dep.luxury_single || null,
+            'exhibition',
+            dep.description || null
+          ]
+        );
+      }
     }
 
     // OPTIONAL TOURS
@@ -1463,7 +1457,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
-    // Process all sections (same as domestic)
+    // ITINERARIES
     await connection.query('DELETE FROM tour_itineraries WHERE exhibition_id = ?', [exhibitionId]);
     if (details.itineraries && details.itineraries.length > 0) {
       const values = details.itineraries.map(i => [
@@ -1479,44 +1473,41 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // DEPARTURES - Updated with hotel star rating structure
     await connection.query('DELETE FROM tour_departures WHERE exhibition_id = ?', [exhibitionId]);
     if (details.departures && details.departures.length > 0) {
-      const values = details.departures.map(d => [
-        exhibitionId,
-        d.description || null,
-        null, null, 0, 0, null, null, null,
-        'Available',
-        'Exhibition',
-        null,
-        null,
-        d.description || null
-      ]);
-      await connection.query(
-        `INSERT INTO tour_departures 
-        (exhibition_id, description, departure_date, return_date, total_seats, booked_seats, adult_price, child_price, infant_price, status, tour_type, start_date, end_date, departure_text)
-        VALUES ?`,
-        [values]
-      );
+      for (const dep of details.departures) {
+        await connection.query(
+          `INSERT INTO tour_departures 
+          (exhibition_id, start_date, end_date, status, description,
+           three_star_twin, three_star_triple, three_star_single,
+           four_star_twin, four_star_triple, four_star_single,
+           five_star_twin, five_star_triple, five_star_single,
+           tour_type, departure_text)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            exhibitionId,
+            dep.start_date || null,
+            dep.end_date || null,
+            dep.status || 'Available',
+            dep.description || null,
+            dep.standard_twin || null,
+            dep.standard_triple || null,
+            dep.standard_single || null,
+            dep.deluxe_twin || null,
+            dep.deluxe_triple || null,
+            dep.deluxe_single || null,
+            dep.luxury_twin || null,
+            dep.luxury_triple || null,
+            dep.luxury_single || null,
+            'exhibition',
+            dep.description || null
+          ]
+        );
+      }
     }
     
-    await connection.query('DELETE FROM tour_costs WHERE exhibition_id = ?', [exhibitionId]);
-    if (details.tour_costs && details.tour_costs.length > 0) {
-      const values = details.tour_costs.map(c => [
-        exhibitionId,
-        c.pax,
-        c.standard_hotel || null,
-        c.deluxe_hotel || null,
-        c.executive_hotel || null,
-        c.child_with_bed || null,
-        c.child_no_bed || null,
-        c.remarks || null
-      ]);
-      await connection.query(
-        'INSERT INTO tour_costs (exhibition_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, remarks) VALUES ?',
-        [values]
-      );
-    }
-    
+    // OPTIONAL TOURS
     await connection.query('DELETE FROM optional_tours WHERE exhibition_id = ?', [exhibitionId]);
     if (details.optional_tours && details.optional_tours.length > 0) {
       const values = details.optional_tours.map(o => [
@@ -1531,6 +1522,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // EMI OPTIONS
     await connection.query('DELETE FROM emi_options WHERE exhibition_id = ?', [exhibitionId]);
     if (details.emi_options && details.emi_options.length > 0 && details.emi_loan_amount) {
       const values = details.emi_options.map(e => [
@@ -1546,6 +1538,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // INCLUSIONS
     await connection.query('DELETE FROM tour_inclusions WHERE exhibition_id = ?', [exhibitionId]);
     if (details.inclusions && details.inclusions.length > 0) {
       const values = details.inclusions.map(i => [exhibitionId, i]);
@@ -1555,6 +1548,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // EXCLUSIONS
     await connection.query('DELETE FROM tour_exclusions WHERE exhibition_id = ?', [exhibitionId]);
     if (details.exclusions && details.exclusions.length > 0) {
       const values = details.exclusions.map(e => [exhibitionId, e]);
@@ -1564,6 +1558,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // TRANSPORTS
     await connection.query('DELETE FROM tour_transports WHERE exhibition_id = ?', [exhibitionId]);
     if (details.transports && details.transports.length > 0) {
       const values = details.transports.map((t, idx) => [
@@ -1577,6 +1572,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // HOTELS
     await connection.query('DELETE FROM tour_hotels WHERE exhibition_id = ?', [exhibitionId]);
     if (details.hotels && details.hotels.length > 0) {
       const values = details.hotels.map(h => [
@@ -1593,6 +1589,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // BOOKING POI
     await connection.query('DELETE FROM tour_booking_poi WHERE exhibition_id = ?', [exhibitionId]);
     if (details.booking_pois && details.booking_pois.length > 0) {
       const values = details.booking_pois.map((p, idx) => [
@@ -1607,6 +1604,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // CANCELLATION POLICIES
     await connection.query('DELETE FROM tour_cancellation_policies WHERE exhibition_id = ?', [exhibitionId]);
     if (details.cancellation_policies && details.cancellation_policies.length > 0) {
       const values = details.cancellation_policies.map((c, idx) => [
@@ -1621,6 +1619,7 @@ router.post('/international/:id/details', async (req, res) => {
       );
     }
     
+    // INSTRUCTIONS
     await connection.query('DELETE FROM tour_instructions WHERE exhibition_id = ?', [exhibitionId]);
     if (details.instructions && details.instructions.length > 0) {
       const values = details.instructions.map((i, idx) => [
@@ -1642,8 +1641,9 @@ router.post('/international/:id/details', async (req, res) => {
       await connection.query('DELETE FROM tour_visa_fees WHERE exhibition_id = ?', [exhibitionId]);
       await connection.query('DELETE FROM tour_visa_forms WHERE exhibition_id = ?', [exhibitionId]);
       await connection.query('DELETE FROM tour_visa_submission WHERE exhibition_id = ?', [exhibitionId]);
+      await connection.query('DELETE FROM tour_visa_currency WHERE exhibition_id = ?', [exhibitionId]);
       
-      // Insert visa details
+      // Insert visa details (tourist, transit, business, photo)
       const visaTypes = ['tourist', 'transit', 'business', 'photo'];
       for (const type of visaTypes) {
         let items = [];
@@ -1666,17 +1666,58 @@ router.post('/international/:id/details', async (req, res) => {
         }
       }
       
-      // Insert visa forms - FIXED: Properly handle NULL values
+      // Insert visa currency data with two conversion fields
+      if (visaData.currency && visaData.currency.length > 0) {
+        for (let i = 0; i < visaData.currency.length; i++) {
+          const currency = visaData.currency[i];
+          
+          // Check if it's a structured currency entry or free flow entry
+          if (currency.local_currency || currency.city_name) {
+            // Structured currency entry
+            await connection.query(
+              `INSERT INTO tour_visa_currency 
+              (tour_id, exhibition_id, local_currency, currency_conversion_1, currency_conversion_2, 
+               city_name, local_time, india_time, type, row_order)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                tourId,
+                exhibitionId,
+                currency.local_currency || null,
+                currency.currency_conversion_1 || null,
+                currency.currency_conversion_2 || null,
+                currency.city_name || null,
+                currency.local_time || null,
+                currency.india_time || null,
+                'currency',
+                i
+              ]
+            );
+          } else if (currency.description) {
+            // Free flow currency entry
+            await connection.query(
+              `INSERT INTO tour_visa_currency 
+              (tour_id, exhibition_id, description, type, row_order)
+              VALUES (?, ?, ?, ?, ?)`,
+              [
+                tourId,
+                exhibitionId,
+                currency.description || null,
+                'free_flow',
+                i
+              ]
+            );
+          }
+        }
+      }
+      
+      // Insert visa forms
       if (visaData.visa_forms && visaData.visa_forms.length > 0) {
         for (let i = 0; i < visaData.visa_forms.length; i++) {
           const form = visaData.visa_forms[i];
           
-          // Extract filename from file object or use the string directly
           let action1File = form.action1_file;
           let action2File = form.action2_file;
           
-          // If it's a File object, we can't store it directly - it should have been uploaded separately
-          // The frontend should upload files first and then send the filename
           if (action1File && typeof action1File === 'object' && action1File.name) {
             action1File = action1File.name;
           }
@@ -1684,13 +1725,11 @@ router.post('/international/:id/details', async (req, res) => {
             action2File = action2File.name;
           }
           
-          // Skip if both files are null/undefined/empty
           if (!action1File && !action2File) {
             console.log(`⚠️ Skipping visa form at index ${i} - no files provided`);
             continue;
           }
           
-          // Prepare values for insertion
           const insertValues = [
             tourId,
             exhibitionId,
@@ -1708,8 +1747,7 @@ router.post('/international/:id/details', async (req, res) => {
             exhibitionId,
             visa_type: form.type || 'Other',
             action1File: action1File || 'NULL',
-            action2File: action2File || 'NULL',
-            remarks: (visaData.tourist_visa_remarks || '').substring(0, 50) + '...'
+            action2File: action2File || 'NULL'
           });
           
           await connection.query(
@@ -1788,7 +1826,6 @@ router.post('/international/:id/details', async (req, res) => {
   }
 });
 
-
 // ========== GET EXHIBITION DETAILS ==========
 router.get('/domestic/:id/details', async (req, res) => {
   const exhibitionId = req.params.id;
@@ -1815,19 +1852,19 @@ router.get('/domestic/:id/details', async (req, res) => {
 
     const result = { exhibition: exhibition[0] };
 
-  const [tours] = await connection.query(
-  `SELECT 
-      t.*,
-      c.state_name,
-      c.city_name
-   FROM tours t
-   LEFT JOIN domestic_exhibition_cities c 
-     ON t.exhibition_id = c.domestic_exhibition_id
-   WHERE t.exhibition_id = ?`,
-  [exhibitionId]
-);
+    const [tours] = await connection.query(
+      `SELECT 
+          t.*,
+          c.state_name,
+          c.city_name
+       FROM tours t
+       LEFT JOIN domestic_exhibition_cities c 
+         ON t.exhibition_id = c.domestic_exhibition_id
+       WHERE t.exhibition_id = ?`,
+      [exhibitionId]
+    );
 
-result.tours = tours || [];
+    result.tours = tours || [];
 
     // Fetch itineraries
     const [itineraries] = await connection.query(
@@ -1836,19 +1873,24 @@ result.tours = tours || [];
     );
     result.itineraries = itineraries || [];
 
-    // Fetch departures
+    // Fetch departures - with all hotel star rating fields
     const [departures] = await connection.query(
-      `SELECT * FROM tour_departures WHERE exhibition_id = ?`,
+      `SELECT 
+          start_date, end_date, status, description,
+          three_star_twin as standard_twin,
+          three_star_triple as standard_triple,
+          three_star_single as standard_single,
+          four_star_twin as deluxe_twin,
+          four_star_triple as deluxe_triple,
+          four_star_single as deluxe_single,
+          five_star_twin as luxury_twin,
+          five_star_triple as luxury_triple,
+          five_star_single as luxury_single
+       FROM tour_departures 
+       WHERE exhibition_id = ?`,
       [exhibitionId]
     );
     result.departures = departures || [];
-
-    // Fetch tour costs
-    const [costs] = await connection.query(
-      `SELECT * FROM tour_costs WHERE exhibition_id = ?`,
-      [exhibitionId]
-    );
-    result.costs = costs || [];
 
     // Fetch optional tours
     const [optionalTours] = await connection.query(
@@ -1920,7 +1962,6 @@ result.tours = tours || [];
         tours: result.tours || [],
         itineraries: result.itineraries || [],
         departures: result.departures || [],
-        costs: result.costs || [],
         optionaltours: result.optionaltours || [],
         emioptions: result.emioptions || [],
         inclusions: result.inclusions || [],
@@ -1969,19 +2010,19 @@ router.get('/international/:id/details', async (req, res) => {
     const result = { exhibition: exhibition[0] };
 
     // Fetch tours data
- const [tours] = await connection.query(
-  `SELECT 
-      t.*,
-      c.city_name,
-      c.country_name
-   FROM tours t
-   LEFT JOIN international_exhibition_cities c 
-     ON t.exhibition_id = c.international_exhibition_id
-   WHERE t.exhibition_id = ?`,
-  [exhibitionId]
-);
+    const [tours] = await connection.query(
+      `SELECT 
+          t.*,
+          c.city_name,
+          c.country_name
+       FROM tours t
+       LEFT JOIN international_exhibition_cities c 
+         ON t.exhibition_id = c.international_exhibition_id
+       WHERE t.exhibition_id = ?`,
+      [exhibitionId]
+    );
 
-result.tours = tours || [];
+    result.tours = tours || [];
 
     // Fetch itineraries
     const [itineraries] = await connection.query(
@@ -1990,19 +2031,24 @@ result.tours = tours || [];
     );
     result.itineraries = itineraries || [];
 
-    // Fetch departures
+    // Fetch departures - with all hotel star rating fields
     const [departures] = await connection.query(
-      `SELECT * FROM tour_departures WHERE exhibition_id = ?`,
+      `SELECT 
+          start_date, end_date, status, description,
+          three_star_twin as standard_twin,
+          three_star_triple as standard_triple,
+          three_star_single as standard_single,
+          four_star_twin as deluxe_twin,
+          four_star_triple as deluxe_triple,
+          four_star_single as deluxe_single,
+          five_star_twin as luxury_twin,
+          five_star_triple as luxury_triple,
+          five_star_single as luxury_single
+       FROM tour_departures 
+       WHERE exhibition_id = ?`,
       [exhibitionId]
     );
     result.departures = departures || [];
-
-    // Fetch tour costs
-    const [costs] = await connection.query(
-      `SELECT * FROM tour_costs WHERE exhibition_id = ?`,
-      [exhibitionId]
-    );
-    result.costs = costs || [];
 
     // Fetch optional tours
     const [optionalTours] = await connection.query(
@@ -2073,23 +2119,30 @@ result.tours = tours || [];
       [exhibitionId]
     );
     
- const [visaForms] = await connection.query(
-  `SELECT 
-      form_id,
-      tour_id,
-      exhibition_id,
-      visa_type,
-      download_action,
-      fill_action,
-      action1_file,
-      action2_file,
-      remarks,
-      row_order
-   FROM tour_visa_forms 
-   WHERE exhibition_id = ?
-   ORDER BY row_order, created_at`,
-  [exhibitionId]
-);
+    // Fetch visa currency data with two conversion fields
+    const [visaCurrency] = await connection.query(
+      `SELECT * FROM tour_visa_currency WHERE exhibition_id = ? ORDER BY row_order, created_at`,
+      [exhibitionId]
+    );
+    
+    const [visaForms] = await connection.query(
+      `SELECT 
+          form_id,
+          tour_id,
+          exhibition_id,
+          visa_type,
+          download_action,
+          fill_action,
+          action1_file,
+          action2_file,
+          remarks,
+          row_order
+       FROM tour_visa_forms 
+       WHERE exhibition_id = ?
+       ORDER BY row_order, created_at`,
+      [exhibitionId]
+    );
+    
     const [visaFees] = await connection.query(
       'SELECT * FROM tour_visa_fees WHERE exhibition_id = ? ORDER BY row_order, created_at',
       [exhibitionId]
@@ -2106,6 +2159,20 @@ result.tours = tours || [];
     const businessVisa = visaDetails.filter(v => v.type === 'business').map(v => ({ description: v.description }));
     const photoVisa = visaDetails.filter(v => v.type === 'photo').map(v => ({ description: v.description }));
     
+    // Process visa currency data - separate structured entries and free flow entries
+    const structuredCurrency = visaCurrency.filter(c => c.type === 'currency' && !c.description).map(c => ({
+      local_currency: c.local_currency,
+      currency_conversion_1: c.currency_conversion_1,
+      currency_conversion_2: c.currency_conversion_2,
+      city_name: c.city_name,
+      local_time: c.local_time,
+      india_time: c.india_time
+    }));
+    
+    const freeFlowCurrency = visaCurrency.filter(c => c.type === 'free_flow').map(c => ({
+      description: c.description
+    }));
+    
     const touristVisaRemarks = visaForms.length > 0 ? visaForms[0].remarks : '';
 
     const transformedResponse = {
@@ -2115,7 +2182,6 @@ result.tours = tours || [];
         tours: result.tours || [],
         itineraries: result.itineraries || [],
         departures: result.departures || [],
-        costs: result.costs || [],
         optionaltours: result.optionaltours || [],
         emioptions: result.emioptions || [],
         inclusions: result.inclusions || [],
@@ -2126,6 +2192,9 @@ result.tours = tours || [];
         cancellationpolicies: result.cancellationpolicies || [],
         instructions: result.instructions || [],
         visa_details: visaDetails || [],
+        visa_currency: visaCurrency || [],
+        structured_currency: structuredCurrency,
+        free_flow_currency: freeFlowCurrency,
         visa_forms: visaForms || [],
         visa_fees: visaFees || [],
         visa_submission: visaSubmission || [],
@@ -2163,11 +2232,12 @@ router.get('/tour-data/:exhibition_id', async (req, res) => {
     const result = {};
 
     const tables = [
-      'tours', 'tour_itineraries', 'tour_departures', 'tour_costs',
+      'tours', 'tour_itineraries', 'tour_departures',
       'optional_tours', 'emi_options', 'tour_inclusions', 'tour_exclusions',
       'tour_transports', 'tour_hotels', 'tour_booking_poi',
       'tour_cancellation_policies', 'tour_instructions',
-      'tour_visa_details', 'tour_visa_forms', 'tour_visa_fees', 'tour_visa_submission'
+      'tour_visa_details', 'tour_visa_forms', 'tour_visa_fees', 
+      'tour_visa_submission', 'tour_visa_currency'
     ];
 
     for (const table of tables) {
