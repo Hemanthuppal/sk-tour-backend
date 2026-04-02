@@ -193,52 +193,75 @@ router.post('/about', (req, res) => {
 // ========== DOMESTIC EXHIBITION ROUTES ==========
 router.get('/domestic', async (req, res) => {
   console.log('📥 GET /domestic');
+
   try {
     const [exhibitions] = await db.query(`
-      SELECT * FROM domestic_exhibition 
-      ORDER BY created_at DESC
+      SELECT 
+        e.*,
+        t.emi_price,
+        d.start_date,
+        d.end_date,
+        t.duration_days
+      FROM domestic_exhibition e
+      LEFT JOIN tours t ON e.id = t.exhibition_id
+      LEFT JOIN tour_departures d ON e.id = d.exhibition_id
+      GROUP BY e.id
+      ORDER BY e.created_at DESC
     `);
-    
+
     for (let exhibition of exhibitions) {
       const [cities] = await db.query(
-        'SELECT id, state_name, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ? ORDER BY created_at',
+        'SELECT id, state_name, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
         [exhibition.id]
       );
       exhibition.cities = cities || [];
     }
-    
+
     res.json(exhibitions);
+
   } catch (error) {
-    console.error('Error fetching domestic exhibitions:', error);
+    console.error(error);
     res.status(500).json({ error: 'Error fetching domestic exhibitions' });
   }
 });
 
 router.get('/domestic/:id', async (req, res) => {
   console.log(`📥 GET /domestic/${req.params.id}`);
+
   try {
     const { id } = req.params;
-    
-    const [exhibitions] = await db.query(
-      'SELECT * FROM domestic_exhibition WHERE id = ?',
-      [id]
-    );
-    
-    if (exhibitions.length === 0) {
+
+    const [rows] = await db.query(`
+      SELECT 
+        e.*,
+        t.emi_price,
+        d.start_date,
+        d.end_date,
+        t.duration_days
+      FROM domestic_exhibition e
+      LEFT JOIN tours t ON e.id = t.exhibition_id
+      LEFT JOIN tour_departures d ON e.id = d.exhibition_id
+      WHERE e.id = ?
+      GROUP BY e.id
+    `, [id]);
+
+    if (rows.length === 0) {
       return res.status(404).json({ error: 'Exhibition not found' });
     }
-    
-    const exhibition = exhibitions[0];
-    
+
+    const exhibition = rows[0];
+
     const [cities] = await db.query(
-      'SELECT id, state_name, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ? ORDER BY created_at',
+      'SELECT id, state_name, city_name, image, price FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
       [id]
     );
-    
+
     exhibition.cities = cities || [];
+
     res.json(exhibition);
+
   } catch (error) {
-    console.error('Error fetching domestic exhibition:', error);
+    console.error(error);
     res.status(500).json({ error: 'Error fetching domestic exhibition' });
   }
 });
@@ -523,21 +546,58 @@ router.delete('/domestic/:id', async (req, res) => {
 // ========== INTERNATIONAL EXHIBITION ROUTES ==========
 router.get('/international', async (req, res) => {
   console.log('📥 GET /international');
+
   try {
+    // ✅ 1. Get exhibitions + tour data (NO departures JOIN)
     const [exhibitions] = await db.query(`
-      SELECT * FROM international_exhibition 
-      ORDER BY created_at DESC
+      SELECT 
+        e.*,
+        t.emi_price,
+        t.duration_days
+      FROM international_exhibition e
+      LEFT JOIN tours t ON e.id = t.exhibition_id
+      ORDER BY e.created_at DESC
     `);
-    
+
+    // ✅ 2. Loop each exhibition
     for (let exhibition of exhibitions) {
+
+      // 👉 Get cities
       const [cities] = await db.query(
-        'SELECT id, country_name, city_name, image, price FROM international_exhibition_cities WHERE international_exhibition_id = ? ORDER BY created_at',
+        `SELECT 
+          id, 
+          country_name, 
+          city_name, 
+          image, 
+          price 
+        FROM international_exhibition_cities 
+        WHERE international_exhibition_id = ? 
+        ORDER BY created_at`,
         [exhibition.id]
       );
+
       exhibition.cities = cities || [];
+
+      // 👉 Get FIRST departure (important fix)
+      const [departures] = await db.query(
+        `SELECT start_date, end_date
+         FROM tour_departures
+         WHERE exhibition_id = ?
+         ORDER BY start_date ASC`,
+        [exhibition.id]
+      );
+
+      if (departures.length > 0) {
+        exhibition.start_date = departures[0].start_date;
+        exhibition.end_date = departures[0].end_date;
+      } else {
+        exhibition.start_date = null;
+        exhibition.end_date = null;
+      }
     }
-    
+
     res.json(exhibitions);
+
   } catch (error) {
     console.error('Error fetching international exhibitions:', error);
     res.status(500).json({ error: 'Error fetching international exhibitions' });
@@ -546,27 +606,62 @@ router.get('/international', async (req, res) => {
 
 router.get('/international/:id', async (req, res) => {
   console.log(`📥 GET /international/${req.params.id}`);
+
   try {
     const { id } = req.params;
-    
-    const [exhibitions] = await db.query(
-      'SELECT * FROM international_exhibition WHERE id = ?',
-      [id]
-    );
-    
-    if (exhibitions.length === 0) {
+
+    // ✅ 1. Get exhibition + tour
+    const [rows] = await db.query(`
+      SELECT 
+        e.*,
+        t.emi_price,
+        t.duration_days
+      FROM international_exhibition e
+      LEFT JOIN tours t ON e.id = t.exhibition_id
+      WHERE e.id = ?
+    `, [id]);
+
+    if (rows.length === 0) {
       return res.status(404).json({ error: 'Exhibition not found' });
     }
-    
-    const exhibition = exhibitions[0];
-    
+
+    const exhibition = rows[0];
+
+    // ✅ 2. Get cities
     const [cities] = await db.query(
-      'SELECT id, country_name, city_name, image, price FROM international_exhibition_cities WHERE international_exhibition_id = ? ORDER BY created_at',
+      `SELECT 
+        id, 
+        country_name, 
+        city_name, 
+        image, 
+        price 
+      FROM international_exhibition_cities 
+      WHERE international_exhibition_id = ? 
+      ORDER BY created_at`,
       [id]
     );
-    
+
     exhibition.cities = cities || [];
+
+    // ✅ 3. Get FIRST departure
+    const [departures] = await db.query(
+      `SELECT start_date, end_date
+       FROM tour_departures
+       WHERE exhibition_id = ?
+       ORDER BY start_date ASC`,
+      [id]
+    );
+
+    if (departures.length > 0) {
+      exhibition.start_date = departures[0].start_date;
+      exhibition.end_date = departures[0].end_date;
+    } else {
+      exhibition.start_date = null;
+      exhibition.end_date = null;
+    }
+
     res.json(exhibition);
+
   } catch (error) {
     console.error('Error fetching international exhibition:', error);
     res.status(500).json({ error: 'Error fetching international exhibition' });
@@ -2032,22 +2127,23 @@ router.get('/international/:id/details', async (req, res) => {
     result.itineraries = itineraries || [];
 
     // Fetch departures - with all hotel star rating fields
-    const [departures] = await connection.query(
-      `SELECT 
-          start_date, end_date, status, description,
-          three_star_twin as standard_twin,
-          three_star_triple as standard_triple,
-          three_star_single as standard_single,
-          four_star_twin as deluxe_twin,
-          four_star_triple as deluxe_triple,
-          four_star_single as deluxe_single,
-          five_star_twin as luxury_twin,
-          five_star_triple as luxury_triple,
-          five_star_single as luxury_single
-       FROM tour_departures 
-       WHERE exhibition_id = ?`,
-      [exhibitionId]
-    );
+   const [departures] = await connection.query(
+  `SELECT 
+      start_date, end_date, status, description,
+      three_star_twin as standard_twin,
+      three_star_triple as standard_triple,
+      three_star_single as standard_single,
+      four_star_twin as deluxe_twin,
+      four_star_triple as deluxe_triple,
+      four_star_single as deluxe_single,
+      five_star_twin as luxury_twin,
+      five_star_triple as luxury_triple,
+      five_star_single as luxury_single
+   FROM tour_departures 
+   WHERE exhibition_id = ?
+   AND start_date IS NOT NULL`,
+  [exhibitionId]
+);
     result.departures = departures || [];
 
     // Fetch optional tours
