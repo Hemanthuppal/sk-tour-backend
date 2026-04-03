@@ -128,7 +128,7 @@ const onlineFlightsRoutes = require('./routes/onlineflights');
 
 const offlineHotelsRoutes = require('./routes/offlinehotels');
 
-const miceRoutes = require('./routes/miceroutes');
+const miceRoutes = require('./routes/MiceRoutes/miceroutes');
 
 const flightspaymentRoutes = require('./routes/flightspayments_v1');
 const bungalowRoutes = require('./routes/bunglow');
