@@ -124,6 +124,36 @@ const handleMulterError = (err, req, res, next) => {
   next();
 };
 
+
+// Configure multer for visa file uploads
+const visaStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = 'uploads/mice/visa/';
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, 'mice-visa-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const uploadVisaFile = multer({ 
+  storage: visaStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: function (req, file, cb) {
+    const filetypes = /jpeg|jpg|png|gif|webp|pdf|doc|docx/;
+    const mimetype = filetypes.test(file.mimetype);
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    if (mimetype && extname) {
+      return cb(null, true);
+    }
+    cb(new Error('Only image, PDF and Word documents are allowed!'));
+  }
+}).single('file');
+
 // ========== DOMESTIC MICE CITY ROUTES ==========
 
 // Get all domestic mice cities
@@ -1524,7 +1554,7 @@ router.delete("/enquiry/:id", async (req, res) => {
 
 // ========== MICE DETAILS ROUTES (Similar to Exhibition but using mice_id) ==========
 
-// Get domestic mice details by ID (for the details page)
+// Get domestic mice details by ID (for the details page) - ADD IMAGES
 router.get('/domestic-details/:id', async (req, res) => {
   const miceId = req.params.id;
   let connection;
@@ -1644,6 +1674,21 @@ router.get('/domestic-details/:id', async (req, res) => {
     );
     result.instructions = instructions || [];
 
+    // ========== FETCH IMAGES ==========
+    const [images] = await connection.query(
+      'SELECT * FROM tour_images WHERE mice_id = ? ORDER BY is_cover DESC, image_id ASC',
+      [miceId]
+    );
+
+    // Process images to add full URLs using baseurl
+    const processedImages = images.map(img => ({
+      ...img,
+      url: img.url.startsWith('http') ? img.url : `http://localhost:5000${img.url}`
+    }));
+    
+    result.images = processedImages;
+    // ========== END OF IMAGES FETCH ==========
+
     const transformedResponse = {
       success: true,
       data: {
@@ -1659,7 +1704,8 @@ router.get('/domestic-details/:id', async (req, res) => {
         hotels: result.hotels || [],
         bookingpoi: result.bookingpoi || [],
         cancellationpolicies: result.cancellationpolicies || [],
-        instructions: result.instructions || []
+        instructions: result.instructions || [],
+        images: result.images || []
       }
     };
 
@@ -1673,6 +1719,242 @@ router.get('/domestic-details/:id', async (req, res) => {
   }
 });
 
+// Get international mice details by ID - SINGLE VERSION (remove duplicate)
+router.get('/international-details/:id', async (req, res) => {
+  const miceId = req.params.id;
+  let connection;
+
+  console.log('📥 GET /api/mice/international-details/:id');
+  console.log(`📌 Mice ID: ${miceId}`);
+
+  try {
+    connection = await db.getConnection();
+
+    // Get the mice city data
+    const [miceCity] = await connection.query(
+      'SELECT * FROM mice_international_cities WHERE id = ?',
+      [miceId]
+    );
+
+    if (miceCity.length === 0) {
+      return res.status(404).json({ error: `Mice city not found with ID: ${miceId}` });
+    }
+
+    const result = { mice_city: miceCity[0] };
+
+    // Fetch tours data for this mice
+    const [tours] = await connection.query(
+      `SELECT * FROM tours WHERE mice_id = ?`,
+      [miceId]
+    );
+
+    result.tours = tours || [];
+
+    // Fetch itineraries
+    const [itineraries] = await connection.query(
+      `SELECT * FROM tour_itineraries WHERE mice_id = ? ORDER BY day`,
+      [miceId]
+    );
+    result.itineraries = itineraries || [];
+
+    // Fetch departures
+    const [departures] = await connection.query(
+      `SELECT 
+          start_date, end_date, status, description,
+          three_star_twin as standard_twin,
+          three_star_triple as standard_triple,
+          three_star_single as standard_single,
+          four_star_twin as deluxe_twin,
+          four_star_triple as deluxe_triple,
+          four_star_single as deluxe_single,
+          five_star_twin as luxury_twin,
+          five_star_triple as luxury_triple,
+          five_star_single as luxury_single
+       FROM tour_departures 
+       WHERE mice_id = ?`,
+      [miceId]
+    );
+    result.departures = departures || [];
+
+    // Fetch optional tours
+    const [optionalTours] = await connection.query(
+      `SELECT tour_name, adult_price, child_price FROM optional_tours WHERE mice_id = ?`,
+      [miceId]
+    );
+    result.optionaltours = optionalTours || [];
+
+    // Fetch EMI options
+    const [emiOptions] = await connection.query(
+      `SELECT loan_amount, particulars, months, emi FROM emi_options WHERE mice_id = ? ORDER BY months`,
+      [miceId]
+    );
+    result.emioptions = emiOptions || [];
+
+    // Fetch inclusions
+    const [inclusions] = await connection.query(
+      `SELECT item FROM tour_inclusions WHERE mice_id = ?`,
+      [miceId]
+    );
+    result.inclusions = inclusions || [];
+
+    // Fetch exclusions
+    const [exclusions] = await connection.query(
+      `SELECT item FROM tour_exclusions WHERE mice_id = ?`,
+      [miceId]
+    );
+    result.exclusions = exclusions || [];
+
+    // Fetch transports
+    const [transports] = await connection.query(
+      `SELECT description FROM tour_transports WHERE mice_id = ? ORDER BY sort_order`,
+      [miceId]
+    );
+    result.transports = transports || [];
+
+    // Fetch hotels
+    const [hotels] = await connection.query(
+      `SELECT city, nights, standard_hotel_name, deluxe_hotel_name, executive_hotel_name FROM tour_hotels WHERE mice_id = ?`,
+      [miceId]
+    );
+    result.hotels = hotels || [];
+
+    // Fetch booking POIs
+    const [bookingPoi] = await connection.query(
+      `SELECT item, amount_details FROM tour_booking_poi WHERE mice_id = ? ORDER BY sort_order`,
+      [miceId]
+    );
+    result.bookingpoi = bookingPoi || [];
+
+    // Fetch cancellation policies
+    const [cancellationPolicies] = await connection.query(
+      `SELECT cancellation_policy, charges FROM tour_cancellation_policies WHERE mice_id = ? ORDER BY sort_order`,
+      [miceId]
+    );
+    result.cancellationpolicies = cancellationPolicies || [];
+
+    // Fetch instructions
+    const [instructions] = await connection.query(
+      `SELECT item FROM tour_instructions WHERE mice_id = ? ORDER BY sort_order`,
+      [miceId]
+    );
+    result.instructions = instructions || [];
+
+    // Fetch visa data for international
+    const [visaDetails] = await connection.query(
+      'SELECT * FROM tour_visa_details WHERE mice_id = ? ORDER BY type, created_at',
+      [miceId]
+    );
+    
+    const [visaCurrency] = await connection.query(
+      `SELECT * FROM tour_visa_currency WHERE mice_id = ? ORDER BY row_order, created_at`,
+      [miceId]
+    );
+    
+    const [visaForms] = await connection.query(
+      `SELECT * FROM tour_visa_forms WHERE mice_id = ? ORDER BY row_order, created_at`,
+      [miceId]
+    );
+    
+    const [visaFees] = await connection.query(
+      'SELECT * FROM tour_visa_fees WHERE mice_id = ? ORDER BY row_order, created_at',
+      [miceId]
+    );
+    
+    const [visaSubmission] = await connection.query(
+      'SELECT * FROM tour_visa_submission WHERE mice_id = ? ORDER BY row_order, created_at',
+      [miceId]
+    );
+
+    // Group visa details by type
+    const touristVisa = visaDetails.filter(v => v.type === 'tourist').map(v => ({ description: v.description }));
+    const transitVisa = visaDetails.filter(v => v.type === 'transit').map(v => ({ description: v.description }));
+    const businessVisa = visaDetails.filter(v => v.type === 'business').map(v => ({ description: v.description }));
+    
+    const structuredCurrency = visaCurrency.filter(c => c.type === 'currency' && !c.description).map(c => ({
+      local_currency: c.local_currency,
+      currency_conversion_1: c.currency_conversion_1,
+      currency_conversion_2: c.currency_conversion_2,
+      city_name: c.city_name,
+      local_time: c.local_time,
+      india_time: c.india_time
+    }));
+    
+    const freeFlowCurrency = visaCurrency.filter(c => c.type === 'free_flow').map(c => ({
+      description: c.description
+    }));
+    
+    const touristVisaRemarks = visaForms.length > 0 ? visaForms[0].remarks : '';
+
+    result.visa_details = visaDetails || [];
+    result.visa_currency = visaCurrency || [];
+    result.structured_currency = structuredCurrency;
+    result.free_flow_currency = freeFlowCurrency;
+    result.visa_forms = visaForms || [];
+    result.visa_fees = visaFees || [];
+    result.visa_submission = visaSubmission || [];
+    result.tourist_visa = touristVisa;
+    result.transit_visa = transitVisa;
+    result.business_visa = businessVisa;
+    result.tourist_visa_remarks = touristVisaRemarks;
+
+    // ========== FETCH IMAGES ==========
+    const [images] = await connection.query(
+      'SELECT * FROM tour_images WHERE mice_id = ? ORDER BY is_cover DESC, image_id ASC',
+      [miceId]
+    );
+
+    // Process images to add full URLs
+    const processedImages = images.map(img => ({
+      ...img,
+      url: img.url.startsWith('http') ? img.url : `http://localhost:5000${img.url}`
+    }));
+    
+    result.images = processedImages;
+    // ========== END OF IMAGES FETCH ==========
+
+    const transformedResponse = {
+      success: true,
+      data: {
+        mice_city: result.mice_city,
+        tours: result.tours || [],
+        itineraries: result.itineraries || [],
+        departures: result.departures || [],
+        optionaltours: result.optionaltours || [],
+        emioptions: result.emioptions || [],
+        inclusions: result.inclusions || [],
+        exclusions: result.exclusions || [],
+        transports: result.transports || [],
+        hotels: result.hotels || [],
+        bookingpoi: result.bookingpoi || [],
+        cancellationpolicies: result.cancellationpolicies || [],
+        instructions: result.instructions || [],
+        visa_details: result.visa_details || [],
+        structured_currency: structuredCurrency,
+        free_flow_currency: freeFlowCurrency,
+        visa_forms: result.visa_forms || [],
+        visa_fees: result.visa_fees || [],
+        visa_submission: result.visa_submission || [],
+        tourist_visa: touristVisa,
+        transit_visa: transitVisa,
+        business_visa: businessVisa,
+        tourist_visa_remarks: touristVisaRemarks,
+        images: result.images || []
+      }
+    };
+
+    res.json(transformedResponse);
+
+  } catch (err) {
+    console.error('❌ Error fetching international mice details:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+
+
+// Get international mice details by ID
 // Get international mice details by ID
 router.get('/international-details/:id', async (req, res) => {
   const miceId = req.params.id;
@@ -1851,6 +2133,21 @@ router.get('/international-details/:id', async (req, res) => {
     result.business_visa = businessVisa;
     result.tourist_visa_remarks = touristVisaRemarks;
 
+    // ========== FETCH IMAGES ==========
+    const [images] = await connection.query(
+      'SELECT * FROM tour_images WHERE mice_id = ? ORDER BY is_cover DESC, image_id ASC',
+      [miceId]
+    );
+
+    // Process images to add full URLs
+    const processedImages = images.map(img => ({
+      ...img,
+      url: img.url.startsWith('http') ? img.url : `http://localhost:5000${img.url}`
+    }));
+    
+    result.images = processedImages;
+    // ========== END OF IMAGES FETCH ==========
+
     const transformedResponse = {
       success: true,
       data: {
@@ -1876,7 +2173,8 @@ router.get('/international-details/:id', async (req, res) => {
         tourist_visa: touristVisa,
         transit_visa: transitVisa,
         business_visa: businessVisa,
-        tourist_visa_remarks: touristVisaRemarks
+        tourist_visa_remarks: touristVisaRemarks,
+        images: result.images || []  // Added images to response
       }
     };
 
@@ -2780,6 +3078,48 @@ router.delete('/mice-images/:image_id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting image:', err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+// Add this route after your other routes
+// ========== VISA FILE UPLOAD ROUTE ==========
+router.post('/upload-visa-file', uploadVisaFile, async (req, res) => {
+  try {
+    console.log('📤 MICE Visa file upload request:', {
+      file: req.file ? req.file.originalname : 'No file'
+    });
+
+    if (!req.file) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'No file uploaded or invalid file type' 
+      });
+    }
+
+    const fileName = req.file.filename;
+    const fileUrl = `/uploads/mice/visa/${fileName}`;
+
+    res.json({
+      success: true,
+      fileName: fileName,
+      fileUrl: fileUrl,
+      originalName: req.file.originalname,
+      message: 'File uploaded successfully'
+    });
+
+  } catch (err) {
+    console.error('❌ MICE Visa file upload error:', err);
+    
+    if (req.file && req.file.path) {
+      fs.unlinkSync(req.file.path);
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: err.message,
+      details: 'Failed to upload visa file'
+    });
   }
 });
 

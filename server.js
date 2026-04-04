@@ -143,6 +143,9 @@ app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carous
 // Add this with your other static middleware - MICE uploads
 app.use('/uploads/mice', express.static(path.join(__dirname, 'uploads/mice')));
 
+// Add this with your other static middleware - MICE gallery uploads
+// app.use('/uploads/mice/gallery', express.static(path.join(__dirname, 'uploads/mice/gallery')));
+
 
 // Create uploads directory if it doesn't exist
 const fs = require('fs');
