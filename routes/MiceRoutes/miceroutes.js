@@ -156,21 +156,37 @@ const uploadVisaFile = multer({
 
 // ========== DOMESTIC MICE CITY ROUTES ==========
 
-// Get all domestic mice cities
+// Get all domestic mice cities with tour + departure details
 router.get('/domestic', async (req, res) => {
   console.log('📥 GET /api/mice/domestic');
   try {
     const [cities] = await db.query(`
-      SELECT * FROM mice_domestic_cities 
-      ORDER BY created_at DESC
+      SELECT 
+        m.*,
+
+        t.emi_price,
+        t.duration_days,
+
+        d.start_date,
+        d.end_date
+
+      FROM mice_domestic_cities m
+
+      LEFT JOIN tours t 
+        ON t.mice_id = m.id
+
+      LEFT JOIN tour_departures d 
+        ON d.mice_id = m.id
+
+      ORDER BY m.created_at DESC
     `);
+
     res.json(cities);
   } catch (error) {
     console.error('Error fetching domestic mice cities:', error);
     res.status(500).json({ error: 'Error fetching domestic mice cities' });
   }
 });
-
 // Get domestic mice city by ID
 router.get('/domestic/:id', async (req, res) => {
   console.log(`📥 GET /api/mice/domestic/${req.params.id}`);
@@ -189,6 +205,7 @@ router.get('/domestic/:id', async (req, res) => {
     res.status(500).json({ error: 'Error fetching domestic mice city' });
   }
 });
+
 
 // Get domestic mice city by city name
 router.get('/domestic/city/:cityName', async (req, res) => {
@@ -472,15 +489,34 @@ router.delete('/domestic/:id', async (req, res) => {
 
 // ========== INTERNATIONAL MICE CITY ROUTES ==========
 
-// Get all international mice cities
 router.get('/international', async (req, res) => {
   console.log('📥 GET /api/mice/international');
+
   try {
     const [cities] = await db.query(`
-      SELECT * FROM mice_international_cities 
-      ORDER BY created_at DESC
+      SELECT 
+        m.id AS mice_id,   -- ✅ important
+        m.*,
+
+        t.emi_price,
+        t.duration_days,
+
+        d.start_date,
+        d.end_date
+
+      FROM mice_international_cities m
+
+      LEFT JOIN tours t 
+        ON t.mice_id = m.id   -- ✅ match with same id
+
+      LEFT JOIN tour_departures d 
+        ON d.mice_id = m.id   -- ✅ match with same id
+
+      ORDER BY m.created_at DESC
     `);
+
     res.json(cities);
+
   } catch (error) {
     console.error('Error fetching international mice cities:', error);
     res.status(500).json({ error: 'Error fetching international mice cities' });
@@ -1340,7 +1376,7 @@ router.delete('/gallery/:id', async (req, res) => {
     const [image] = await db.query('SELECT image_path FROM mice_gallery WHERE id = ?', [req.params.id]);
     
     if (image.length > 0) {
-      const filePath = path.join('uploads/mice/gallery/', image[0].image_path);
+      const filePath = path.join('uploads/mice/', image[0].image_path);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
       }
@@ -2965,7 +3001,7 @@ router.post('/mice-images/upload/:mice_id', (req, res) => {
         null,
         null,
         miceId,
-        `/uploads/mice/gallery/${file.filename}`,
+        `/uploads/mice/${file.filename}`,
         null,
         0
       ]);
@@ -2979,7 +3015,7 @@ router.post('/mice-images/upload/:mice_id', (req, res) => {
       
       res.status(201).json({
         message: `${files.length} image(s) uploaded successfully`,
-        uploaded: files.map(f => `/uploads/mice/gallery/${f.filename}`)
+        uploaded: files.map(f => `/uploads/mice/${f.filename}`)
       });
     } catch (err) {
       await connection.rollback();
@@ -3066,7 +3102,7 @@ router.delete('/mice-images/:image_id', async (req, res) => {
     
     const urlPath = img[0].url;
     const filename = urlPath.split('/').pop();
-    const filePath = path.join('uploads/mice/gallery/', filename);
+    const filePath = path.join('uploads/mice/', filename);
     
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
