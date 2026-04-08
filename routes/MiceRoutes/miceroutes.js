@@ -1,4 +1,4 @@
-// routes/miceRoutes.js - Combined MICE Routes
+// routes/miceRoutes.js - Combined MICE Routes (FULLY UPDATED)
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
@@ -41,7 +41,7 @@ const internationalCityStorage = multer.diskStorage({
   }
 });
 
-// Configure multer for other MICE content (main, freeflow, packages, etc.)
+// Configure multer for other MICE content
 const contentStorage = multer.diskStorage({
   destination: function (req, file, cb) {
     let uploadPath = 'uploads/mice/';
@@ -124,7 +124,6 @@ const handleMulterError = (err, req, res, next) => {
   next();
 };
 
-
 // Configure multer for visa file uploads
 const visaStorage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -156,37 +155,29 @@ const uploadVisaFile = multer({
 
 // ========== DOMESTIC MICE CITY ROUTES ==========
 
-// Get all domestic mice cities with tour + departure details
+// Get all domestic mice cities
 router.get('/domestic', async (req, res) => {
   console.log('📥 GET /api/mice/domestic');
   try {
     const [cities] = await db.query(`
       SELECT 
         m.*,
-
         t.emi_price,
         t.duration_days,
-
         d.start_date,
         d.end_date
-
       FROM mice_domestic_cities m
-
-      LEFT JOIN tours t 
-        ON t.mice_id = m.id
-
-      LEFT JOIN tour_departures d 
-        ON d.mice_id = m.id
-
+      LEFT JOIN tours t ON t.mice_id = m.id
+      LEFT JOIN tour_departures d ON d.mice_id = m.id
       ORDER BY m.created_at DESC
     `);
-
     res.json(cities);
   } catch (error) {
     console.error('Error fetching domestic mice cities:', error);
     res.status(500).json({ error: 'Error fetching domestic mice cities' });
   }
 });
+
 // Get domestic mice city by ID
 router.get('/domestic/:id', async (req, res) => {
   console.log(`📥 GET /api/mice/domestic/${req.params.id}`);
@@ -205,7 +196,6 @@ router.get('/domestic/:id', async (req, res) => {
     res.status(500).json({ error: 'Error fetching domestic mice city' });
   }
 });
-
 
 // Get domestic mice city by city name
 router.get('/domestic/city/:cityName', async (req, res) => {
@@ -227,6 +217,8 @@ router.get('/domestic/city/:cityName', async (req, res) => {
 });
 
 // Create domestic mice cities
+// In your backend routes file - Update the domestic POST endpoint
+
 router.post('/domestic', (req, res) => {
   console.log('📥 POST /api/mice/domestic');
   uploadDomesticMultiple(req, res, async (err) => {
@@ -287,7 +279,7 @@ router.post('/domestic', (req, res) => {
       for (let i = 0; i < cityNamesArray.length; i++) {
         const stateName = stateNamesArray[i]?.trim() || null;
         const cityName = cityNamesArray[i]?.trim();
-        const price = pricesArray[i];
+        const price = pricesArray[i]?.trim(); // Now accepts any string
         const imageFile = files[i];
         
         if (!cityName) {
@@ -295,7 +287,7 @@ router.post('/domestic', (req, res) => {
           return res.status(400).json({ error: 'City name cannot be empty' });
         }
         
-        if (!price || price <= 0) {
+        if (!price || price.toString().trim() === '') {
           await connection.rollback();
           return res.status(400).json({ error: 'Valid price is required for each city' });
         }
@@ -391,14 +383,15 @@ router.put('/domestic/:id', (req, res) => {
       for (let i = 0; i < cityNamesArray.length; i++) {
         const stateName = stateNamesArray[i]?.trim() || null;
         const cityName = cityNamesArray[i]?.trim();
-        const price = pricesArray[i];
+        const price = pricesArray[i]?.trim(); // Changed: Now accepts any string, removed numeric validation
         
         if (!cityName) {
           await connection.rollback();
           return res.status(400).json({ error: 'City name cannot be empty' });
         }
         
-        if (!price || price <= 0) {
+        // Changed: Only check if price exists and is not empty
+        if (!price || price.toString().trim() === '') {
           await connection.rollback();
           return res.status(400).json({ error: 'Valid price is required for each city' });
         }
@@ -416,6 +409,7 @@ router.put('/domestic/:id', (req, res) => {
           return res.status(400).json({ error: 'Image missing for city: ' + cityName });
         }
         
+        // Changed: price is now inserted as string (VARCHAR)
         await connection.query(
           'INSERT INTO mice_domestic_cities (id, state_name, city_name, image, price) VALUES (?, ?, ?, ?, ?)',
           [id, stateName, cityName, imageFilename, price]
@@ -495,28 +489,19 @@ router.get('/international', async (req, res) => {
   try {
     const [cities] = await db.query(`
       SELECT 
-        m.id AS mice_id,   -- ✅ important
+        m.id AS mice_id,
         m.*,
-
         t.emi_price,
         t.duration_days,
-
         d.start_date,
         d.end_date
-
       FROM mice_international_cities m
-
-      LEFT JOIN tours t 
-        ON t.mice_id = m.id   -- ✅ match with same id
-
-      LEFT JOIN tour_departures d 
-        ON d.mice_id = m.id   -- ✅ match with same id
-
+      LEFT JOIN tours t ON t.mice_id = m.id
+      LEFT JOIN tour_departures d ON d.mice_id = m.id
       ORDER BY m.created_at DESC
     `);
 
     res.json(cities);
-
   } catch (error) {
     console.error('Error fetching international mice cities:', error);
     res.status(500).json({ error: 'Error fetching international mice cities' });
@@ -562,6 +547,8 @@ router.get('/international/city/:cityName', async (req, res) => {
 });
 
 // Create international mice cities
+// In your backend routes file - Update the international POST endpoint
+
 router.post('/international', (req, res) => {
   console.log('📥 POST /api/mice/international');
   uploadInternationalMultiple(req, res, async (err) => {
@@ -622,7 +609,7 @@ router.post('/international', (req, res) => {
       for (let i = 0; i < cityNamesArray.length; i++) {
         const countryName = countryNamesArray[i]?.trim() || null;
         const cityName = cityNamesArray[i]?.trim();
-        const price = pricesArray[i];
+        const price = pricesArray[i]?.trim(); // Now accepts any string
         const imageFile = files[i];
         
         if (!cityName) {
@@ -630,7 +617,7 @@ router.post('/international', (req, res) => {
           return res.status(400).json({ error: 'City name cannot be empty' });
         }
         
-        if (!price || price <= 0) {
+        if (!price || price.toString().trim() === '') {
           await connection.rollback();
           return res.status(400).json({ error: 'Valid price is required for each city' });
         }
@@ -726,14 +713,15 @@ router.put('/international/:id', (req, res) => {
       for (let i = 0; i < cityNamesArray.length; i++) {
         const countryName = countryNamesArray[i]?.trim() || null;
         const cityName = cityNamesArray[i]?.trim();
-        const price = pricesArray[i];
+        const price = pricesArray[i]?.trim(); // Changed: Now accepts any string, removed numeric validation
         
         if (!cityName) {
           await connection.rollback();
           return res.status(400).json({ error: 'City name cannot be empty' });
         }
         
-        if (!price || price <= 0) {
+        // Changed: Only check if price exists and is not empty
+        if (!price || price.toString().trim() === '') {
           await connection.rollback();
           return res.status(400).json({ error: 'Valid price is required for each city' });
         }
@@ -751,6 +739,7 @@ router.put('/international/:id', (req, res) => {
           return res.status(400).json({ error: 'Image missing for city: ' + cityName });
         }
         
+        // Changed: price is now inserted as string (VARCHAR)
         await connection.query(
           'INSERT INTO mice_international_cities (id, country_name, city_name, image, price) VALUES (?, ?, ?, ?, ?)',
           [id, countryName, cityName, imageFilename, price]
@@ -1587,10 +1576,9 @@ router.delete("/enquiry/:id", async (req, res) => {
   }
 });
 
+// ========== MICE DETAILS ROUTES ==========
 
-// ========== MICE DETAILS ROUTES (Similar to Exhibition but using mice_id) ==========
-
-// Get domestic mice details by ID (for the details page) - ADD IMAGES
+// Get domestic mice details by ID (UPDATED with tour_costs)
 router.get('/domestic-details/:id', async (req, res) => {
   const miceId = req.params.id;
   let connection;
@@ -1618,7 +1606,6 @@ router.get('/domestic-details/:id', async (req, res) => {
       `SELECT * FROM tours WHERE mice_id = ?`,
       [miceId]
     );
-
     result.tours = tours || [];
 
     // Fetch itineraries
@@ -1628,24 +1615,20 @@ router.get('/domestic-details/:id', async (req, res) => {
     );
     result.itineraries = itineraries || [];
 
-    // Fetch departures
+    // Fetch departures (FREE FLOW - just descriptions)
     const [departures] = await connection.query(
-      `SELECT 
-          start_date, end_date, status, description,
-          three_star_twin as standard_twin,
-          three_star_triple as standard_triple,
-          three_star_single as standard_single,
-          four_star_twin as deluxe_twin,
-          four_star_triple as deluxe_triple,
-          four_star_single as deluxe_single,
-          five_star_twin as luxury_twin,
-          five_star_triple as luxury_triple,
-          five_star_single as luxury_single
-       FROM tour_departures 
-       WHERE mice_id = ?`,
+      `SELECT description FROM tour_departures WHERE mice_id = ?`,
       [miceId]
     );
     result.departures = departures || [];
+
+    // Fetch tour costs (NEW)
+    const [tourCosts] = await connection.query(
+      `SELECT pax, standard_hotel, deluxe_hotel, executive_hotel, remarks 
+       FROM tour_costs WHERE mice_id = ? ORDER BY cost_id ASC`,
+      [miceId]
+    );
+    result.tour_costs = tourCosts || [];
 
     // Fetch optional tours
     const [optionalTours] = await connection.query(
@@ -1710,20 +1693,17 @@ router.get('/domestic-details/:id', async (req, res) => {
     );
     result.instructions = instructions || [];
 
-    // ========== FETCH IMAGES ==========
+    // Fetch images
     const [images] = await connection.query(
       'SELECT * FROM tour_images WHERE mice_id = ? ORDER BY is_cover DESC, image_id ASC',
       [miceId]
     );
 
-    // Process images to add full URLs using baseurl
     const processedImages = images.map(img => ({
       ...img,
       url: img.url.startsWith('http') ? img.url : `http://localhost:5000${img.url}`
     }));
-    
     result.images = processedImages;
-    // ========== END OF IMAGES FETCH ==========
 
     const transformedResponse = {
       success: true,
@@ -1732,6 +1712,7 @@ router.get('/domestic-details/:id', async (req, res) => {
         tours: result.tours || [],
         itineraries: result.itineraries || [],
         departures: result.departures || [],
+        tour_costs: result.tour_costs || [],
         optionaltours: result.optionaltours || [],
         emioptions: result.emioptions || [],
         inclusions: result.inclusions || [],
@@ -1755,7 +1736,7 @@ router.get('/domestic-details/:id', async (req, res) => {
   }
 });
 
-// Get international mice details by ID - SINGLE VERSION (remove duplicate)
+// Get international mice details by ID (UPDATED with tour_costs)
 router.get('/international-details/:id', async (req, res) => {
   const miceId = req.params.id;
   let connection;
@@ -1783,7 +1764,6 @@ router.get('/international-details/:id', async (req, res) => {
       `SELECT * FROM tours WHERE mice_id = ?`,
       [miceId]
     );
-
     result.tours = tours || [];
 
     // Fetch itineraries
@@ -1793,24 +1773,20 @@ router.get('/international-details/:id', async (req, res) => {
     );
     result.itineraries = itineraries || [];
 
-    // Fetch departures
+    // Fetch departures (FREE FLOW - just descriptions)
     const [departures] = await connection.query(
-      `SELECT 
-          start_date, end_date, status, description,
-          three_star_twin as standard_twin,
-          three_star_triple as standard_triple,
-          three_star_single as standard_single,
-          four_star_twin as deluxe_twin,
-          four_star_triple as deluxe_triple,
-          four_star_single as deluxe_single,
-          five_star_twin as luxury_twin,
-          five_star_triple as luxury_triple,
-          five_star_single as luxury_single
-       FROM tour_departures 
-       WHERE mice_id = ?`,
+      `SELECT description FROM tour_departures WHERE mice_id = ?`,
       [miceId]
     );
     result.departures = departures || [];
+
+    // Fetch tour costs (NEW)
+    const [tourCosts] = await connection.query(
+      `SELECT pax, standard_hotel, deluxe_hotel, executive_hotel, remarks 
+       FROM tour_costs WHERE mice_id = ? ORDER BY cost_id ASC`,
+      [miceId]
+    );
+    result.tour_costs = tourCosts || [];
 
     // Fetch optional tours
     const [optionalTours] = await connection.query(
@@ -1933,20 +1909,17 @@ router.get('/international-details/:id', async (req, res) => {
     result.business_visa = businessVisa;
     result.tourist_visa_remarks = touristVisaRemarks;
 
-    // ========== FETCH IMAGES ==========
+    // Fetch images
     const [images] = await connection.query(
       'SELECT * FROM tour_images WHERE mice_id = ? ORDER BY is_cover DESC, image_id ASC',
       [miceId]
     );
 
-    // Process images to add full URLs
     const processedImages = images.map(img => ({
       ...img,
       url: img.url.startsWith('http') ? img.url : `http://localhost:5000${img.url}`
     }));
-    
     result.images = processedImages;
-    // ========== END OF IMAGES FETCH ==========
 
     const transformedResponse = {
       success: true,
@@ -1955,6 +1928,7 @@ router.get('/international-details/:id', async (req, res) => {
         tours: result.tours || [],
         itineraries: result.itineraries || [],
         departures: result.departures || [],
+        tour_costs: result.tour_costs || [],
         optionaltours: result.optionaltours || [],
         emioptions: result.emioptions || [],
         inclusions: result.inclusions || [],
@@ -1988,243 +1962,7 @@ router.get('/international-details/:id', async (req, res) => {
   }
 });
 
-
-
-// Get international mice details by ID
-// Get international mice details by ID
-router.get('/international-details/:id', async (req, res) => {
-  const miceId = req.params.id;
-  let connection;
-
-  console.log('📥 GET /api/mice/international-details/:id');
-  console.log(`📌 Mice ID: ${miceId}`);
-
-  try {
-    connection = await db.getConnection();
-
-    // Get the mice city data
-    const [miceCity] = await connection.query(
-      'SELECT * FROM mice_international_cities WHERE id = ?',
-      [miceId]
-    );
-
-    if (miceCity.length === 0) {
-      return res.status(404).json({ error: `Mice city not found with ID: ${miceId}` });
-    }
-
-    const result = { mice_city: miceCity[0] };
-
-    // Fetch tours data for this mice
-    const [tours] = await connection.query(
-      `SELECT * FROM tours WHERE mice_id = ?`,
-      [miceId]
-    );
-
-    result.tours = tours || [];
-
-    // Fetch itineraries
-    const [itineraries] = await connection.query(
-      `SELECT * FROM tour_itineraries WHERE mice_id = ? ORDER BY day`,
-      [miceId]
-    );
-    result.itineraries = itineraries || [];
-
-    // Fetch departures
-    const [departures] = await connection.query(
-      `SELECT 
-          start_date, end_date, status, description,
-          three_star_twin as standard_twin,
-          three_star_triple as standard_triple,
-          three_star_single as standard_single,
-          four_star_twin as deluxe_twin,
-          four_star_triple as deluxe_triple,
-          four_star_single as deluxe_single,
-          five_star_twin as luxury_twin,
-          five_star_triple as luxury_triple,
-          five_star_single as luxury_single
-       FROM tour_departures 
-       WHERE mice_id = ?`,
-      [miceId]
-    );
-    result.departures = departures || [];
-
-    // Fetch optional tours
-    const [optionalTours] = await connection.query(
-      `SELECT tour_name, adult_price, child_price FROM optional_tours WHERE mice_id = ?`,
-      [miceId]
-    );
-    result.optionaltours = optionalTours || [];
-
-    // Fetch EMI options
-    const [emiOptions] = await connection.query(
-      `SELECT loan_amount, particulars, months, emi FROM emi_options WHERE mice_id = ? ORDER BY months`,
-      [miceId]
-    );
-    result.emioptions = emiOptions || [];
-
-    // Fetch inclusions
-    const [inclusions] = await connection.query(
-      `SELECT item FROM tour_inclusions WHERE mice_id = ?`,
-      [miceId]
-    );
-    result.inclusions = inclusions || [];
-
-    // Fetch exclusions
-    const [exclusions] = await connection.query(
-      `SELECT item FROM tour_exclusions WHERE mice_id = ?`,
-      [miceId]
-    );
-    result.exclusions = exclusions || [];
-
-    // Fetch transports
-    const [transports] = await connection.query(
-      `SELECT description FROM tour_transports WHERE mice_id = ? ORDER BY sort_order`,
-      [miceId]
-    );
-    result.transports = transports || [];
-
-    // Fetch hotels
-    const [hotels] = await connection.query(
-      `SELECT city, nights, standard_hotel_name, deluxe_hotel_name, executive_hotel_name FROM tour_hotels WHERE mice_id = ?`,
-      [miceId]
-    );
-    result.hotels = hotels || [];
-
-    // Fetch booking POIs
-    const [bookingPoi] = await connection.query(
-      `SELECT item, amount_details FROM tour_booking_poi WHERE mice_id = ? ORDER BY sort_order`,
-      [miceId]
-    );
-    result.bookingpoi = bookingPoi || [];
-
-    // Fetch cancellation policies
-    const [cancellationPolicies] = await connection.query(
-      `SELECT cancellation_policy, charges FROM tour_cancellation_policies WHERE mice_id = ? ORDER BY sort_order`,
-      [miceId]
-    );
-    result.cancellationpolicies = cancellationPolicies || [];
-
-    // Fetch instructions
-    const [instructions] = await connection.query(
-      `SELECT item FROM tour_instructions WHERE mice_id = ? ORDER BY sort_order`,
-      [miceId]
-    );
-    result.instructions = instructions || [];
-
-    // Fetch visa data for international
-    const [visaDetails] = await connection.query(
-      'SELECT * FROM tour_visa_details WHERE mice_id = ? ORDER BY type, created_at',
-      [miceId]
-    );
-    
-    const [visaCurrency] = await connection.query(
-      `SELECT * FROM tour_visa_currency WHERE mice_id = ? ORDER BY row_order, created_at`,
-      [miceId]
-    );
-    
-    const [visaForms] = await connection.query(
-      `SELECT * FROM tour_visa_forms WHERE mice_id = ? ORDER BY row_order, created_at`,
-      [miceId]
-    );
-    
-    const [visaFees] = await connection.query(
-      'SELECT * FROM tour_visa_fees WHERE mice_id = ? ORDER BY row_order, created_at',
-      [miceId]
-    );
-    
-    const [visaSubmission] = await connection.query(
-      'SELECT * FROM tour_visa_submission WHERE mice_id = ? ORDER BY row_order, created_at',
-      [miceId]
-    );
-
-    // Group visa details by type
-    const touristVisa = visaDetails.filter(v => v.type === 'tourist').map(v => ({ description: v.description }));
-    const transitVisa = visaDetails.filter(v => v.type === 'transit').map(v => ({ description: v.description }));
-    const businessVisa = visaDetails.filter(v => v.type === 'business').map(v => ({ description: v.description }));
-    
-    const structuredCurrency = visaCurrency.filter(c => c.type === 'currency' && !c.description).map(c => ({
-      local_currency: c.local_currency,
-      currency_conversion_1: c.currency_conversion_1,
-      currency_conversion_2: c.currency_conversion_2,
-      city_name: c.city_name,
-      local_time: c.local_time,
-      india_time: c.india_time
-    }));
-    
-    const freeFlowCurrency = visaCurrency.filter(c => c.type === 'free_flow').map(c => ({
-      description: c.description
-    }));
-    
-    const touristVisaRemarks = visaForms.length > 0 ? visaForms[0].remarks : '';
-
-    result.visa_details = visaDetails || [];
-    result.visa_currency = visaCurrency || [];
-    result.structured_currency = structuredCurrency;
-    result.free_flow_currency = freeFlowCurrency;
-    result.visa_forms = visaForms || [];
-    result.visa_fees = visaFees || [];
-    result.visa_submission = visaSubmission || [];
-    result.tourist_visa = touristVisa;
-    result.transit_visa = transitVisa;
-    result.business_visa = businessVisa;
-    result.tourist_visa_remarks = touristVisaRemarks;
-
-    // ========== FETCH IMAGES ==========
-    const [images] = await connection.query(
-      'SELECT * FROM tour_images WHERE mice_id = ? ORDER BY is_cover DESC, image_id ASC',
-      [miceId]
-    );
-
-    // Process images to add full URLs
-    const processedImages = images.map(img => ({
-      ...img,
-      url: img.url.startsWith('http') ? img.url : `http://localhost:5000${img.url}`
-    }));
-    
-    result.images = processedImages;
-    // ========== END OF IMAGES FETCH ==========
-
-    const transformedResponse = {
-      success: true,
-      data: {
-        mice_city: result.mice_city,
-        tours: result.tours || [],
-        itineraries: result.itineraries || [],
-        departures: result.departures || [],
-        optionaltours: result.optionaltours || [],
-        emioptions: result.emioptions || [],
-        inclusions: result.inclusions || [],
-        exclusions: result.exclusions || [],
-        transports: result.transports || [],
-        hotels: result.hotels || [],
-        bookingpoi: result.bookingpoi || [],
-        cancellationpolicies: result.cancellationpolicies || [],
-        instructions: result.instructions || [],
-        visa_details: result.visa_details || [],
-        structured_currency: structuredCurrency,
-        free_flow_currency: freeFlowCurrency,
-        visa_forms: result.visa_forms || [],
-        visa_fees: result.visa_fees || [],
-        visa_submission: result.visa_submission || [],
-        tourist_visa: touristVisa,
-        transit_visa: transitVisa,
-        business_visa: businessVisa,
-        tourist_visa_remarks: touristVisaRemarks,
-        images: result.images || []  // Added images to response
-      }
-    };
-
-    res.json(transformedResponse);
-
-  } catch (err) {
-    console.error('❌ Error fetching international mice details:', err);
-    res.status(500).json({ error: err.message });
-  } finally {
-    if (connection) connection.release();
-  }
-});
-
-// Save domestic mice details (POST)
+// Save domestic mice details (POST) - UPDATED with tour_costs and free-flow departures
 router.post('/domestic-details/:id', async (req, res) => {
   const miceId = req.params.id;
   const details = req.body;
@@ -2270,7 +2008,7 @@ router.post('/domestic-details/:id', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           tourCode,
-          details.exhibition_name || cityName,
+          details.mice_name || cityName,
           'mice',
           details.duration_days || 0,
           details.overview || null,
@@ -2298,7 +2036,7 @@ router.post('/domestic-details/:id', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE mice_id = ?`,
         [
-          details.exhibition_name || cityName,
+          details.mice_name || cityName,
           details.duration_days || 0,
           details.overview || null,
           details.base_price_adult || 0,
@@ -2331,38 +2069,46 @@ router.post('/domestic-details/:id', async (req, res) => {
       );
     }
 
-    // DEPARTURES
+    // DEPARTURES - FREE FLOW (just descriptions)
     await connection.query('DELETE FROM tour_departures WHERE mice_id = ?', [miceId]);
-    if (details.departures?.length) {
-      for (const dep of details.departures) {
+    if (details.departures && details.departures.length > 0) {
+      for (let i = 0; i < details.departures.length; i++) {
+        const dep = details.departures[i];
         await connection.query(
           `INSERT INTO tour_departures 
-          (mice_id, start_date, end_date, status, description,
-           three_star_twin, three_star_triple, three_star_single,
-           four_star_twin, four_star_triple, four_star_single,
-           five_star_twin, five_star_triple, five_star_single,
-           tour_type, departure_text)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (mice_id, description, tour_type)
+          VALUES (?, ?, ?)`,
           [
             miceId,
-            dep.start_date || null,
-            dep.end_date || null,
-            dep.status || 'Available',
             dep.description || null,
-            dep.standard_twin || null,
-            dep.standard_triple || null,
-            dep.standard_single || null,
-            dep.deluxe_twin || null,
-            dep.deluxe_triple || null,
-            dep.deluxe_single || null,
-            dep.luxury_twin || null,
-            dep.luxury_triple || null,
-            dep.luxury_single || null,
             'mice',
-            dep.description || null
+            i + 1
           ]
         );
       }
+      console.log(`✅ Saved ${details.departures.length} departure(s) for mice ${miceId}`);
+    }
+
+    // TOUR COSTS (NEW)
+    await connection.query('DELETE FROM tour_costs WHERE mice_id = ?', [miceId]);
+    if (details.tour_costs && details.tour_costs.length > 0) {
+      for (let i = 0; i < details.tour_costs.length; i++) {
+        const cost = details.tour_costs[i];
+        await connection.query(
+          `INSERT INTO tour_costs 
+          (mice_id, pax, standard_hotel, deluxe_hotel, executive_hotel, remarks, created_at) 
+          VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+          [
+            miceId,
+            cost.pax || null,
+            cost.standard_hotel || null,
+            cost.deluxe_hotel || null,
+            cost.executive_hotel || null,
+            cost.remarks || null
+          ]
+        );
+      }
+      console.log(`✅ Saved ${details.tour_costs.length} tour cost(s) for mice ${miceId}`);
     }
 
     // OPTIONAL TOURS
@@ -2512,7 +2258,7 @@ router.post('/domestic-details/:id', async (req, res) => {
   }
 });
 
-// Save international mice details (POST)
+// Save international mice details (POST) - UPDATED with tour_costs and free-flow departures
 router.post('/international-details/:id', async (req, res) => {
   const miceId = req.params.id;
   const details = req.body;
@@ -2557,7 +2303,7 @@ router.post('/international-details/:id', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           tourCode,
-          details.exhibition_name || cityName,
+          details.mice_name || cityName,
           'mice',
           details.duration_days || 0,
           details.overview || null,
@@ -2584,7 +2330,7 @@ router.post('/international-details/:id', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE mice_id = ?`,
         [
-          details.exhibition_name || cityName,
+          details.mice_name || cityName,
           details.duration_days || 0,
           details.overview || null,
           details.base_price_adult || 0,
@@ -2624,38 +2370,46 @@ router.post('/international-details/:id', async (req, res) => {
       );
     }
 
-    // DEPARTURES
+    // DEPARTURES - FREE FLOW (just descriptions)
     await connection.query('DELETE FROM tour_departures WHERE mice_id = ?', [miceId]);
-    if (details.departures?.length) {
-      for (const dep of details.departures) {
+    if (details.departures && details.departures.length > 0) {
+      for (let i = 0; i < details.departures.length; i++) {
+        const dep = details.departures[i];
         await connection.query(
           `INSERT INTO tour_departures 
-          (mice_id, start_date, end_date, status, description,
-           three_star_twin, three_star_triple, three_star_single,
-           four_star_twin, four_star_triple, four_star_single,
-           five_star_twin, five_star_triple, five_star_single,
-           tour_type, departure_text)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (mice_id, description, tour_type)
+          VALUES (?, ?, ?)`,
           [
             miceId,
-            dep.start_date || null,
-            dep.end_date || null,
-            dep.status || 'Available',
             dep.description || null,
-            dep.standard_twin || null,
-            dep.standard_triple || null,
-            dep.standard_single || null,
-            dep.deluxe_twin || null,
-            dep.deluxe_triple || null,
-            dep.deluxe_single || null,
-            dep.luxury_twin || null,
-            dep.luxury_triple || null,
-            dep.luxury_single || null,
             'mice',
-            dep.description || null
+            i + 1
           ]
         );
       }
+      console.log(`✅ Saved ${details.departures.length} departure(s) for mice ${miceId}`);
+    }
+
+    // TOUR COSTS (NEW)
+    await connection.query('DELETE FROM tour_costs WHERE mice_id = ?', [miceId]);
+    if (details.tour_costs && details.tour_costs.length > 0) {
+      for (let i = 0; i < details.tour_costs.length; i++) {
+        const cost = details.tour_costs[i];
+        await connection.query(
+          `INSERT INTO tour_costs 
+          (mice_id, pax, standard_hotel, deluxe_hotel, executive_hotel, remarks, created_at) 
+          VALUES (?, ?, ?, ?, ?, ?, NOW())`,
+          [
+            miceId,
+            cost.pax || null,
+            cost.standard_hotel || null,
+            cost.deluxe_hotel || null,
+            cost.executive_hotel || null,
+            cost.remarks || null
+          ]
+        );
+      }
+      console.log(`✅ Saved ${details.tour_costs.length} tour cost(s) for mice ${miceId}`);
     }
 
     // OPTIONAL TOURS
@@ -2861,54 +2615,52 @@ router.post('/international-details/:id', async (req, res) => {
         }
       }
       
-     // Insert visa forms
-if (visaData.visa_forms && visaData.visa_forms.length > 0) {
-  for (let i = 0; i < visaData.visa_forms.length; i++) {
-    const form = visaData.visa_forms[i];
-    
-    let action1File = form.action1_file;
-    let action2File = form.action2_file;
-    
-    // Handle file objects
-    if (action1File && typeof action1File === 'object' && action1File.name) {
-      action1File = action1File.name;
-    } else if (action1File && typeof action1File === 'string' && action1File.length > 0) {
-      action1File = action1File;
-    } else {
-      action1File = null;
-    }
-    
-    if (action2File && typeof action2File === 'object' && action2File.name) {
-      action2File = action2File.name;
-    } else if (action2File && typeof action2File === 'string' && action2File.length > 0) {
-      action2File = action2File;
-    } else {
-      action2File = null;
-    }
-    
-    // Ensure we're not sending empty strings to the database
-    const remarks = visaData.tourist_visa_remarks && typeof visaData.tourist_visa_remarks === 'string' 
-      ? visaData.tourist_visa_remarks 
-      : null;
-    
-    await connection.query(
-      `INSERT INTO tour_visa_forms 
-      (tour_id, mice_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks, row_order) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        tourId,
-        miceId,
-        form.type || 'Other',
-        form.download_action || 'Download',
-        form.fill_action || 'Fill Manually',
-        action1File,
-        action2File,
-        remarks,
-        i
-      ]
-    );
-  }
-}
+      // Insert visa forms
+      if (visaData.visa_forms && visaData.visa_forms.length > 0) {
+        for (let i = 0; i < visaData.visa_forms.length; i++) {
+          const form = visaData.visa_forms[i];
+          
+          let action1File = form.action1_file;
+          let action2File = form.action2_file;
+          
+          if (action1File && typeof action1File === 'object' && action1File.name) {
+            action1File = action1File.name;
+          } else if (action1File && typeof action1File === 'string' && action1File.length > 0) {
+            action1File = action1File;
+          } else {
+            action1File = null;
+          }
+          
+          if (action2File && typeof action2File === 'object' && action2File.name) {
+            action2File = action2File.name;
+          } else if (action2File && typeof action2File === 'string' && action2File.length > 0) {
+            action2File = action2File;
+          } else {
+            action2File = null;
+          }
+          
+          const remarks = visaData.tourist_visa_remarks && typeof visaData.tourist_visa_remarks === 'string' 
+            ? visaData.tourist_visa_remarks 
+            : null;
+          
+          await connection.query(
+            `INSERT INTO tour_visa_forms 
+            (tour_id, mice_id, visa_type, download_action, fill_action, action1_file, action2_file, remarks, row_order) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              tourId,
+              miceId,
+              form.type || 'Other',
+              form.download_action || 'Download',
+              form.fill_action || 'Fill Manually',
+              action1File,
+              action2File,
+              remarks,
+              i
+            ]
+          );
+        }
+      }
       
       // Insert visa fees
       if (visaData.visa_fees && visaData.visa_fees.length > 0) {
@@ -3036,7 +2788,6 @@ router.get('/mice-images/:mice_id', async (req, res) => {
       [req.params.mice_id]
     );
     
-    // Add full URL for images
     const imagesWithUrl = rows.map(img => ({
       ...img,
       url: img.url.startsWith('http') ? img.url : `${req.protocol}://${req.get('host')}${img.url}`
@@ -3117,8 +2868,6 @@ router.delete('/mice-images/:image_id', async (req, res) => {
   }
 });
 
-
-// Add this route after your other routes
 // ========== VISA FILE UPLOAD ROUTE ==========
 router.post('/upload-visa-file', uploadVisaFile, async (req, res) => {
   try {
@@ -3156,6 +2905,64 @@ router.post('/upload-visa-file', uploadVisaFile, async (req, res) => {
       error: err.message,
       details: 'Failed to upload visa file'
     });
+  }
+});
+
+// ========== COMBINED MICE ROUTE ==========
+router.get('/all', async (req, res) => {
+  console.log('📥 GET /api/mice/all - Combined MICE exhibitions');
+
+  try {
+    const [domesticCities] = await db.query(`
+      SELECT 
+        m.*,
+        'domestic' as mice_type,
+        t.emi_price,
+        t.duration_days,
+        d.start_date,
+        d.end_date
+      FROM mice_domestic_cities m
+      LEFT JOIN tours t ON t.mice_id = m.id
+      LEFT JOIN tour_departures d ON d.mice_id = m.id
+      ORDER BY m.created_at DESC
+    `);
+
+    for (let city of domesticCities) {
+      city.country_name = null;
+    }
+
+    const [internationalCities] = await db.query(`
+      SELECT 
+        m.*,
+        'international' as mice_type,
+        t.emi_price,
+        t.duration_days,
+        d.start_date,
+        d.end_date
+      FROM mice_international_cities m
+      LEFT JOIN tours t ON t.mice_id = m.id
+      LEFT JOIN tour_departures d ON d.mice_id = m.id
+      ORDER BY m.created_at DESC
+    `);
+
+    for (let city of internationalCities) {
+      city.state_name = null;
+    }
+
+    const combinedMice = [...domesticCities, ...internationalCities];
+    combinedMice.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    res.json({
+      success: true,
+      total: combinedMice.length,
+      domestic_count: domesticCities.length,
+      international_count: internationalCities.length,
+      data: combinedMice
+    });
+
+  } catch (error) {
+    console.error('Error fetching combined MICE data:', error);
+    res.status(500).json({ error: 'Error fetching MICE data' });
   }
 });
 

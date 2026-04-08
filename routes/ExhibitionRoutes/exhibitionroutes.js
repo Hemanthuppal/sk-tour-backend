@@ -2366,4 +2366,111 @@ router.get('/tour-data/:exhibition_id', async (req, res) => {
   }
 });
 
+
+// ========== COMBINED EXHIBITIONS ROUTE ==========
+router.get('/all', async (req, res) => {
+  console.log('📥 GET /all - Combined exhibitions');
+
+  try {
+    // Fetch domestic exhibitions
+    const [domesticExhibitions] = await db.query(`
+      SELECT 
+        e.*,
+        t.emi_price,
+        d.start_date,
+        d.end_date,
+        t.duration_days,
+        'domestic' as exhibition_type
+      FROM domestic_exhibition e
+      LEFT JOIN tours t ON e.id = t.exhibition_id
+      LEFT JOIN tour_departures d ON e.id = d.exhibition_id
+      GROUP BY e.id
+      ORDER BY e.created_at DESC
+    `);
+
+    // Fetch cities for each domestic exhibition
+    for (let exhibition of domesticExhibitions) {
+      const [cities] = await db.query(
+        `SELECT 
+          id, 
+          state_name, 
+          city_name, 
+          image, 
+          price 
+        FROM domestic_exhibition_cities 
+        WHERE domestic_exhibition_id = ?`,
+        [exhibition.id]
+      );
+      exhibition.cities = cities || [];
+      exhibition.country_name = null; // Domestic has no country
+    }
+
+    // Fetch international exhibitions
+    const [internationalExhibitions] = await db.query(`
+      SELECT 
+        e.*,
+        t.emi_price,
+        t.duration_days,
+        'international' as exhibition_type
+      FROM international_exhibition e
+      LEFT JOIN tours t ON e.id = t.exhibition_id
+      ORDER BY e.created_at DESC
+    `);
+
+    // Fetch cities and first departure for each international exhibition
+    for (let exhibition of internationalExhibitions) {
+      // Get cities
+      const [cities] = await db.query(
+        `SELECT 
+          id, 
+          country_name, 
+          city_name, 
+          image, 
+          price 
+        FROM international_exhibition_cities 
+        WHERE international_exhibition_id = ? 
+        ORDER BY created_at`,
+        [exhibition.id]
+      );
+      exhibition.cities = cities || [];
+      exhibition.state_name = null; // International has no state
+
+      // Get first departure
+      const [departures] = await db.query(
+        `SELECT start_date, end_date
+         FROM tour_departures
+         WHERE exhibition_id = ?
+         ORDER BY start_date ASC`,
+        [exhibition.id]
+      );
+
+      if (departures.length > 0) {
+        exhibition.start_date = departures[0].start_date;
+        exhibition.end_date = departures[0].end_date;
+      } else {
+        exhibition.start_date = null;
+        exhibition.end_date = null;
+      }
+    }
+
+    // Combine both arrays
+    const combinedExhibitions = [...domesticExhibitions, ...internationalExhibitions];
+    
+    // Sort by created date (newest first)
+    combinedExhibitions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+    res.json({
+      success: true,
+      total: combinedExhibitions.length,
+      domestic_count: domesticExhibitions.length,
+      international_count: internationalExhibitions.length,
+      data: combinedExhibitions
+    });
+
+  } catch (error) {
+    console.error('Error fetching combined exhibitions:', error);
+    res.status(500).json({ error: 'Error fetching exhibitions' });
+  }
+});
+
 module.exports = router;
