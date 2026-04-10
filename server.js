@@ -137,14 +137,14 @@ const weekendGatewayRoutes = require('./routes/weekend');
 
 const Passport = require('./routes/Passport');
 
-
+const user = require('./routes/user')
 // Update the static middleware to serve carousel images
 app.use('/uploads/carousel', express.static(path.join(__dirname, 'uploads/carousel')));
 // Add this with your other static middleware - MICE uploads
 app.use('/uploads/mice', express.static(path.join(__dirname, 'uploads/mice')));
 
 // Add this with your other static middleware - MICE gallery uploads
-app.use('/uploads/mice/gallery', express.static(path.join(__dirname, 'uploads/mice/gallery')));
+// app.use('/uploads/mice', express.static(path.join(__dirname, 'uploads/mice')));
 
 
 // Create uploads directory if it doesn't exist
@@ -273,6 +273,7 @@ app.use('/api/offline-hotels', offlineHotelsRoutes);
 
 app.use('/api/mice', miceRoutes);
 
+app.use('/api', user);
 
 
 // Simple test route
