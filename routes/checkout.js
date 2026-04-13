@@ -5,8 +5,6 @@ const db = require("../config/db");
 /* ================= CHECKOUT API ================= */
 
 // Create a new checkout record
-// In your checkout API (routes/checkout.js), update the create checkout endpoint:
-
 router.post("/checkout", async (req, res) => {
     try {
         const {
@@ -31,6 +29,7 @@ router.post("/checkout", async (req, res) => {
             country,
             payment_method,
             source_page,
+            source, // New field: 'tours', 'flights', etc.
             terms_accepted,
             notes
         } = req.body;
@@ -43,22 +42,22 @@ router.post("/checkout", async (req, res) => {
             });
         }
 
-        // Insert checkout record
+        // Insert checkout record with source field
         const [result] = await db.execute(
             `INSERT INTO checkouts (
                 tour_id, tour_code, tour_title, tour_duration, tour_locations,
                 tour_image_url, total_tour_cost, advance_percentage, advance_amount,
                 emi_price, first_name, last_name, email, phone, address, city,
-                state, pincode, country, payment_method, source_page,
+                state, pincode, country, payment_method, source_page, source,
                 terms_accepted, notes, payment_status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
             [
                 tour_id, tour_code || '', tour_title || '', tour_duration || '', tour_locations || '',
                 tour_image_url || '', total_tour_cost, advance_percentage || 20.00, advance_amount,
                 emi_price || 0, first_name || '', last_name || '', email || '', phone || '',
                 address || '', city || '', state || '', pincode || '', country || 'India',
-                payment_method || 'card', source_page || 'tour-packages', terms_accepted || false,
-                notes || ''
+                payment_method || 'card', source_page || 'tour-packages', source || 'tours', 
+                terms_accepted || false, notes || ''
             ]
         );
 
@@ -94,7 +93,7 @@ router.post("/checkout", async (req, res) => {
     }
 });
 
-// Update the payment update endpoint:
+// Update the payment update endpoint
 router.put("/checkout/:id/payment", async (req, res) => {
     try {
         const checkoutId = req.params.id;
@@ -192,56 +191,6 @@ router.get("/checkout/:id", async (req, res) => {
     }
 });
 
-// Update checkout with PhonePe order details
-router.put("/checkout/:id/payment", async (req, res) => {
-    try {
-        const checkoutId = req.params.id;
-        const { phonepe_order_id, phonepe_transaction_id, payment_status } = req.body;
-
-        if (!phonepe_order_id) {
-            return res.status(400).json({
-                success: false,
-                message: "PhonePe order ID is required"
-            });
-        }
-
-        const [result] = await db.execute(
-            `UPDATE checkouts 
-             SET phonepe_order_id = ?, 
-                 phonepe_transaction_id = ?, 
-                 payment_status = ?,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE checkout_id = ?`,
-            [
-                phonepe_order_id,
-                phonepe_transaction_id || null,
-                payment_status || 'processing',
-                checkoutId
-            ]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Checkout record not found"
-            });
-        }
-
-        res.json({
-            success: true,
-            message: "Payment details updated successfully"
-        });
-
-    } catch (error) {
-        console.error("Update checkout payment error:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to update payment details",
-            error: error.message
-        });
-    }
-});
-
 // Update checkout status
 router.put("/checkout/:id/status", async (req, res) => {
     try {
@@ -293,6 +242,33 @@ router.put("/checkout/:id/status", async (req, res) => {
     }
 });
 
+// Get checkouts by source (tours, flights, etc.)
+router.get("/checkout/source/:source", async (req, res) => {
+    try {
+        const source = req.params.source;
+        
+        const [rows] = await db.execute(
+            `SELECT * FROM checkouts 
+             WHERE source = ? 
+             ORDER BY created_at DESC`,
+            [source]
+        );
+
+        res.json({
+            success: true,
+            checkouts: rows
+        });
+
+    } catch (error) {
+        console.error("Get checkouts by source error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch checkouts",
+            error: error.message
+        });
+    }
+});
+
 // Get checkouts by tour ID
 router.get("/checkout/tour/:tour_id", async (req, res) => {
     try {
@@ -320,22 +296,35 @@ router.get("/checkout/tour/:tour_id", async (req, res) => {
     }
 });
 
-// Get all checkouts (with pagination)
+// Get all checkouts (with pagination and filtering)
 router.get("/checkouts", async (req, res) => {
     try {
-        const { page = 1, limit = 20, status } = req.query;
+        const { page = 1, limit = 20, status, source } = req.query;
         const offset = (page - 1) * limit;
 
         let query = `SELECT * FROM checkouts`;
         let countQuery = `SELECT COUNT(*) as total FROM checkouts`;
         const params = [];
         const countParams = [];
-
+        
+        const conditions = [];
+        
         if (status) {
-            query += ` WHERE payment_status = ?`;
-            countQuery += ` WHERE payment_status = ?`;
+            conditions.push(`payment_status = ?`);
             params.push(status);
             countParams.push(status);
+        }
+        
+        if (source) {
+            conditions.push(`source = ?`);
+            params.push(source);
+            countParams.push(source);
+        }
+        
+        if (conditions.length > 0) {
+            const whereClause = ` WHERE ` + conditions.join(' AND ');
+            query += whereClause;
+            countQuery += whereClause;
         }
 
         query += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;

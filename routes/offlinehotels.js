@@ -11,6 +11,45 @@ if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+// Helper function to format date to YYYY-MM-DD without timezone conversion
+const formatDateForDB = (dateString) => {
+    if (!dateString) return null;
+    // If it's already in YYYY-MM-DD format, return as is
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return dateString;
+    }
+    // If it's a Date object or ISO string, extract YYYY-MM-DD in local time
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    return dateString;
+};
+
+// Helper function to format MySQL DATE to YYYY-MM-DD without timezone conversion
+const formatDateFromDB = (date) => {
+    if (!date) return null;
+    // If it's a Date object, convert to YYYY-MM-DD in local time
+    if (date instanceof Date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    // If it's already a string in YYYY-MM-DD format
+    if (typeof date === 'string' && date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return date;
+    }
+    // If it's an ISO string, extract date part
+    if (typeof date === 'string' && date.includes('T')) {
+        return date.split('T')[0];
+    }
+    return date;
+};
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -53,11 +92,13 @@ router.get('/', async (req, res) => {
             ORDER BY created_at DESC
         `);
         
-        // Parse JSON fields for each row
+        // Parse JSON fields and format dates for each row
         const hotels = rows.map(hotel => ({
             ...hotel,
             children_ages: hotel.children_ages ? JSON.parse(hotel.children_ages) : [],
-            additional_images: hotel.additional_images ? JSON.parse(hotel.additional_images) : []
+            additional_images: hotel.additional_images ? JSON.parse(hotel.additional_images) : [],
+            check_in_date: formatDateFromDB(hotel.check_in_date),
+            check_out_date: formatDateFromDB(hotel.check_out_date)
         }));
         
         res.json({
@@ -91,9 +132,11 @@ router.get('/:id', async (req, res) => {
 
         const hotel = rows[0];
         
-        // Parse JSON fields
+        // Parse JSON fields and format dates
         hotel.children_ages = hotel.children_ages ? JSON.parse(hotel.children_ages) : [];
         hotel.additional_images = hotel.additional_images ? JSON.parse(hotel.additional_images) : [];
+        hotel.check_in_date = formatDateFromDB(hotel.check_in_date);
+        hotel.check_out_date = formatDateFromDB(hotel.check_out_date);
 
         // Fetch associated filter data
         const [priceRanges] = await db.query(
@@ -144,7 +187,6 @@ router.get('/:id', async (req, res) => {
 router.post('/', (req, res) => {
     uploadFields(req, res, async function(err) {
         if (err instanceof multer.MulterError) {
-            // A Multer error occurred when uploading
             console.error('Multer error:', err);
             return res.status(400).json({
                 success: false,
@@ -153,7 +195,6 @@ router.post('/', (req, res) => {
                     : err.message
             });
         } else if (err) {
-            // An unknown error occurred
             console.error('Upload error:', err);
             return res.status(500).json({
                 success: false,
@@ -194,8 +235,8 @@ router.post('/', (req, res) => {
                 });
             }
 
-            // Insert main hotel details
-            const [hotelResult] = await connection.query(`
+            // Insert main hotel details with formatted dates
+            const insertQuery = `
                 INSERT INTO offline_hotels (
                     country, city, location, property_name,
                     check_in_date, check_out_date, rooms, adults, children, pets,
@@ -208,43 +249,46 @@ router.post('/', (req, res) => {
                     airport_transfers_description, meal_plan_description,
                     taxes_description,
                     created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-                [
-                    parsedSearchDetails.country,
-                    parsedSearchDetails.city,
-                    parsedSearchDetails.location || null,
-                    parsedSearchDetails.propertyName || null,
-                    parsedSearchDetails.checkInDate,
-                    parsedSearchDetails.checkOutDate,
-                    parsedSearchDetails.rooms,
-                    parsedSearchDetails.adults,
-                    parsedSearchDetails.children,
-                    parsedSearchDetails.pets ? 1 : 0,
-                    JSON.stringify(parsedChildrenAges),
-                    parsedHotelDetails.hotelName,
-                    parsedHotelDetails.location,
-                    parsedHotelDetails.starRating,
-                    mainImagePath,
-                    additionalImagePaths.length > 0 ? JSON.stringify(additionalImagePaths) : JSON.stringify([]),
-                    parsedHotelDetails.rating || 0,
-                    parsedHotelDetails.totalRatings || 0,
-                    parsedHotelDetails.price,
-                    parsedHotelDetails.taxes || null,
-                    parsedHotelDetails.amenities || null,
-                    parsedHotelDetails.status || 'Available',
-                    parsedHotelDetails.freeStayForKids ? 1 : 0,
-                    parsedHotelDetails.limitedTimeSale ? 1 : 0,
-                    parsedHotelDetails.salePrice || null,
-                    parsedHotelDetails.originalPrice || null,
-                    parsedHotelDetails.loginToBook ? 1 : 0,
-                    parsedHotelDetails.payLater ? 1 : 0,
-                    parsedDescriptions.overview || null,
-                    parsedDescriptions.hotelFacilities || null,
-                    parsedDescriptions.airportTransfers || null,
-                    parsedDescriptions.mealPlan || null,
-                    parsedDescriptions.taxesDescription || null
-                ]
-            );
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            `;
+
+            const insertValues = [
+                parsedSearchDetails.country,
+                parsedSearchDetails.city,
+                parsedSearchDetails.location || null,
+                parsedSearchDetails.propertyName || null,
+                formatDateForDB(parsedSearchDetails.checkInDate),
+                formatDateForDB(parsedSearchDetails.checkOutDate),
+                parsedSearchDetails.rooms,
+                parsedSearchDetails.adults,
+                parsedSearchDetails.children,
+                parsedSearchDetails.pets ? 1 : 0,
+                JSON.stringify(parsedChildrenAges),
+                parsedHotelDetails.hotelName,
+                parsedHotelDetails.location,
+                parsedHotelDetails.starRating,
+                mainImagePath,
+                additionalImagePaths.length > 0 ? JSON.stringify(additionalImagePaths) : JSON.stringify([]),
+                parsedHotelDetails.rating || 0,
+                parsedHotelDetails.totalRatings || 0,
+                parsedHotelDetails.price,
+                parsedHotelDetails.taxes || null,
+                parsedHotelDetails.amenities || null,
+                parsedHotelDetails.status || 'Available',
+                parsedHotelDetails.freeStayForKids ? 1 : 0,
+                parsedHotelDetails.limitedTimeSale ? 1 : 0,
+                parsedHotelDetails.salePrice || null,
+                parsedHotelDetails.originalPrice || null,
+                parsedHotelDetails.loginToBook ? 1 : 0,
+                parsedHotelDetails.payLater ? 1 : 0,
+                parsedDescriptions.overview || null,
+                parsedDescriptions.hotelFacilities || null,
+                parsedDescriptions.airportTransfers || null,
+                parsedDescriptions.mealPlan || null,
+                parsedDescriptions.taxesDescription || null
+            ];
+
+            const [hotelResult] = await connection.query(insertQuery, insertValues);
 
             const hotelId = hotelResult.insertId;
 
@@ -263,9 +307,8 @@ router.post('/', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_price_ranges (
                         hotel_id, min_price, max_price, range_label, property_count, is_selected, created_at
-                    ) VALUES ?`,
-                    [priceRangeValues]
-                );
+                    ) VALUES ?
+                `, [priceRangeValues]);
             }
 
             // Insert star categories
@@ -281,9 +324,8 @@ router.post('/', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_star_categories (
                         hotel_id, stars, property_count, is_selected, created_at
-                    ) VALUES ?`,
-                    [starValues]
-                );
+                    ) VALUES ?
+                `, [starValues]);
             }
 
             // Insert budget
@@ -291,9 +333,8 @@ router.post('/', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_budget (
                         hotel_id, min_budget, max_budget, created_at
-                    ) VALUES (?, ?, ?, NOW())`,
-                    [hotelId, parsedFilters.budget.min || null, parsedFilters.budget.max || null]
-                );
+                    ) VALUES (?, ?, ?, NOW())
+                `, [hotelId, parsedFilters.budget.min || null, parsedFilters.budget.max || null]);
             }
 
             // Insert search locality
@@ -301,9 +342,8 @@ router.post('/', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_search_localities (
                         hotel_id, locality_name, created_at
-                    ) VALUES (?, ?, NOW())`,
-                    [hotelId, parsedFilters.searchLocality]
-                );
+                    ) VALUES (?, ?, NOW())
+                `, [hotelId, parsedFilters.searchLocality]);
             }
 
             await connection.commit();
@@ -384,8 +424,8 @@ router.put('/:id', (req, res) => {
                 });
             }
 
-            // Update main hotel details
-            await connection.query(`
+            // Update main hotel details with formatted dates
+            const updateQuery = `
                 UPDATE offline_hotels SET
                     country = ?, city = ?, location = ?, property_name = ?,
                     check_in_date = ?, check_out_date = ?, rooms = ?, adults = ?,
@@ -399,44 +439,47 @@ router.put('/:id', (req, res) => {
                     hotel_facilities_description = ?, airport_transfers_description = ?,
                     meal_plan_description = ?, taxes_description = ?,
                     updated_at = NOW()
-                WHERE id = ?`,
-                [
-                    parsedSearchDetails.country,
-                    parsedSearchDetails.city,
-                    parsedSearchDetails.location || null,
-                    parsedSearchDetails.propertyName || null,
-                    parsedSearchDetails.checkInDate,
-                    parsedSearchDetails.checkOutDate,
-                    parsedSearchDetails.rooms,
-                    parsedSearchDetails.adults,
-                    parsedSearchDetails.children,
-                    parsedSearchDetails.pets ? 1 : 0,
-                    JSON.stringify(parsedChildrenAges),
-                    parsedHotelDetails.hotelName,
-                    parsedHotelDetails.location,
-                    parsedHotelDetails.starRating,
-                    mainImagePath,
-                    additionalImagePaths.length > 0 ? JSON.stringify(additionalImagePaths) : parsedHotelDetails.additionalImages ? JSON.stringify(parsedHotelDetails.additionalImages) : JSON.stringify([]),
-                    parsedHotelDetails.rating || 0,
-                    parsedHotelDetails.totalRatings || 0,
-                    parsedHotelDetails.price,
-                    parsedHotelDetails.taxes || null,
-                    parsedHotelDetails.amenities || null,
-                    parsedHotelDetails.status || 'Available',
-                    parsedHotelDetails.freeStayForKids ? 1 : 0,
-                    parsedHotelDetails.limitedTimeSale ? 1 : 0,
-                    parsedHotelDetails.salePrice || null,
-                    parsedHotelDetails.originalPrice || null,
-                    parsedHotelDetails.loginToBook ? 1 : 0,
-                    parsedHotelDetails.payLater ? 1 : 0,
-                    parsedDescriptions.overview || null,
-                    parsedDescriptions.hotelFacilities || null,
-                    parsedDescriptions.airportTransfers || null,
-                    parsedDescriptions.mealPlan || null,
-                    parsedDescriptions.taxesDescription || null,
-                    req.params.id
-                ]
-            );
+                WHERE id = ?
+            `;
+
+            const updateValues = [
+                parsedSearchDetails.country,
+                parsedSearchDetails.city,
+                parsedSearchDetails.location || null,
+                parsedSearchDetails.propertyName || null,
+                formatDateForDB(parsedSearchDetails.checkInDate),
+                formatDateForDB(parsedSearchDetails.checkOutDate),
+                parsedSearchDetails.rooms,
+                parsedSearchDetails.adults,
+                parsedSearchDetails.children,
+                parsedSearchDetails.pets ? 1 : 0,
+                JSON.stringify(parsedChildrenAges),
+                parsedHotelDetails.hotelName,
+                parsedHotelDetails.location,
+                parsedHotelDetails.starRating,
+                mainImagePath,
+                additionalImagePaths.length > 0 ? JSON.stringify(additionalImagePaths) : parsedHotelDetails.additionalImages ? JSON.stringify(parsedHotelDetails.additionalImages) : JSON.stringify([]),
+                parsedHotelDetails.rating || 0,
+                parsedHotelDetails.totalRatings || 0,
+                parsedHotelDetails.price,
+                parsedHotelDetails.taxes || null,
+                parsedHotelDetails.amenities || null,
+                parsedHotelDetails.status || 'Available',
+                parsedHotelDetails.freeStayForKids ? 1 : 0,
+                parsedHotelDetails.limitedTimeSale ? 1 : 0,
+                parsedHotelDetails.salePrice || null,
+                parsedHotelDetails.originalPrice || null,
+                parsedHotelDetails.loginToBook ? 1 : 0,
+                parsedHotelDetails.payLater ? 1 : 0,
+                parsedDescriptions.overview || null,
+                parsedDescriptions.hotelFacilities || null,
+                parsedDescriptions.airportTransfers || null,
+                parsedDescriptions.mealPlan || null,
+                parsedDescriptions.taxesDescription || null,
+                req.params.id
+            ];
+
+            await connection.query(updateQuery, updateValues);
 
             // Delete existing filters
             await connection.query('DELETE FROM offline_hotel_price_ranges WHERE hotel_id = ?', [req.params.id]);
@@ -459,9 +502,8 @@ router.put('/:id', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_price_ranges (
                         hotel_id, min_price, max_price, range_label, property_count, is_selected, created_at
-                    ) VALUES ?`,
-                    [priceRangeValues]
-                );
+                    ) VALUES ?
+                `, [priceRangeValues]);
             }
 
             // Re-insert star categories
@@ -477,9 +519,8 @@ router.put('/:id', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_star_categories (
                         hotel_id, stars, property_count, is_selected, created_at
-                    ) VALUES ?`,
-                    [starValues]
-                );
+                    ) VALUES ?
+                `, [starValues]);
             }
 
             // Re-insert budget
@@ -487,9 +528,8 @@ router.put('/:id', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_budget (
                         hotel_id, min_budget, max_budget, created_at
-                    ) VALUES (?, ?, ?, NOW())`,
-                    [req.params.id, parsedFilters.budget.min || null, parsedFilters.budget.max || null]
-                );
+                    ) VALUES (?, ?, ?, NOW())
+                `, [req.params.id, parsedFilters.budget.min || null, parsedFilters.budget.max || null]);
             }
 
             // Re-insert search locality
@@ -497,9 +537,8 @@ router.put('/:id', (req, res) => {
                 await connection.query(`
                     INSERT INTO offline_hotel_search_localities (
                         hotel_id, locality_name, created_at
-                    ) VALUES (?, ?, NOW())`,
-                    [req.params.id, parsedFilters.searchLocality]
-                );
+                    ) VALUES (?, ?, NOW())
+                `, [req.params.id, parsedFilters.searchLocality]);
             }
 
             await connection.commit();
