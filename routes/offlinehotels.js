@@ -507,6 +507,9 @@ router.post('/', (req, res) => {
 // =====================================================
 // UPDATE OFFLINE HOTEL
 // =====================================================
+// =====================================================
+// UPDATE OFFLINE HOTEL
+// =====================================================
 router.put('/:id', (req, res) => {
     uploadFields(req, res, async function(err) {
         if (err) {
@@ -528,7 +531,8 @@ router.put('/:id', (req, res) => {
                 hotelDetails,
                 customAmenities,
                 descriptions,
-                roomTypesData
+                roomTypesData,
+                deletedRoomImages // Add this from frontend
             } = req.body;
 
             // Parse JSON strings safely
@@ -538,6 +542,7 @@ router.put('/:id', (req, res) => {
             const parsedChildrenAges = safeJSONParse(childrenAges, []);
             const parsedCustomAmenities = safeJSONParse(customAmenities, []);
             const parsedRoomTypesData = safeJSONParse(roomTypesData, {});
+            const parsedDeletedRoomImages = safeJSONParse(deletedRoomImages, []);
 
             // Combine amenities with custom amenities
             const allAmenities = [
@@ -640,6 +645,7 @@ router.put('/:id', (req, res) => {
                     hotelId
                 ];
             } else {
+                // Similar without custom_amenities...
                 updateQuery = `
                     UPDATE offline_hotels SET
                         country = ?, city = ?, location = ?, property_name = ?,
@@ -705,12 +711,33 @@ router.put('/:id', (req, res) => {
                 );
             }
 
-            // Delete existing room data
-            await connection.query('DELETE FROM offline_hotel_room_images WHERE hotel_id = ?', [hotelId]);
-            await connection.query('DELETE FROM offline_hotel_room_options WHERE hotel_id = ?', [hotelId]);
-            await connection.query('DELETE FROM offline_hotel_room_types WHERE hotel_id = ?', [hotelId]);
+            // =====================================================
+            // FIXED: Handle room images incrementally instead of deleting all
+            // =====================================================
+            
+            // First, delete images that were marked for deletion
+            if (parsedDeletedRoomImages && parsedDeletedRoomImages.length > 0) {
+                for (const deletedImage of parsedDeletedRoomImages) {
+                    // Delete the physical file
+                    const fullPath = path.join(__dirname, '..', deletedImage.imagePath);
+                    if (fs.existsSync(fullPath)) {
+                        try { 
+                            fs.unlinkSync(fullPath); 
+                            console.log('Deleted file:', fullPath);
+                        } catch(e) {
+                            console.error('Error deleting file:', e);
+                        }
+                    }
+                    
+                    // Delete from database
+                    await connection.query(
+                        'DELETE FROM offline_hotel_room_images WHERE image_path = ?',
+                        [deletedImage.imagePath]
+                    );
+                }
+            }
 
-            // Process room types
+            // Process room types - UPDATE existing, INSERT new
             if (parsedRoomTypesData && Object.keys(parsedRoomTypesData).length > 0) {
                 const roomImageFiles = req.files?.roomImages || [];
                 const roomImageMetadata = req.body.roomImageMetadata || [];
@@ -725,36 +752,81 @@ router.put('/:id', (req, res) => {
                 for (const [category, categoryData] of Object.entries(parsedRoomTypesData)) {
                     if (!categoryData || !categoryData.enabled) continue;
                     
-                    const [roomTypeResult] = await connection.query(
-                        'INSERT INTO offline_hotel_room_types (hotel_id, room_category, is_enabled) VALUES (?, ?, ?)',
-                        [hotelId, category, 1]
+                    // Check if room type exists
+                    const [existingRoomType] = await connection.query(
+                        'SELECT id FROM offline_hotel_room_types WHERE hotel_id = ? AND room_category = ?',
+                        [hotelId, category]
                     );
-                    const roomTypeId = roomTypeResult.insertId;
+                    
+                    let roomTypeId;
+                    if (existingRoomType.length > 0) {
+                        roomTypeId = existingRoomType[0].id;
+                        await connection.query(
+                            'UPDATE offline_hotel_room_types SET is_enabled = ? WHERE id = ?',
+                            [1, roomTypeId]
+                        );
+                    } else {
+                        const [roomTypeResult] = await connection.query(
+                            'INSERT INTO offline_hotel_room_types (hotel_id, room_category, is_enabled) VALUES (?, ?, ?)',
+                            [hotelId, category, 1]
+                        );
+                        roomTypeId = roomTypeResult.insertId;
+                    }
                     
                     if (categoryData.hotels && categoryData.hotels.length > 0) {
                         for (let hotelIndex = 0; hotelIndex < categoryData.hotels.length; hotelIndex++) {
                             const hotel = categoryData.hotels[hotelIndex];
                             
-                            const [optionResult] = await connection.query(
-                                `INSERT INTO offline_hotel_room_options 
-                                (hotel_id, room_type_id, room_name, price, amenities, max_occupancy, 
-                                 bed_type, room_size, available_rooms, description) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                                [
-                                    hotelId,
-                                    roomTypeId,
-                                    hotel.roomType || '',
-                                    hotel.price || '',
-                                    safeJSONStringify(hotel.amenities || []),
-                                    hotel.maxOccupancy || 2,
-                                    hotel.bedType || null,
-                                    hotel.roomSize || null,
-                                    hotel.availableRooms || 0,
-                                    hotel.description || null
-                                ]
+                            // Check if room option exists (by id)
+                            let roomOptionId = hotel.id;
+                            const [existingOption] = await connection.query(
+                                'SELECT id FROM offline_hotel_room_options WHERE id = ?',
+                                [hotel.id]
                             );
-                            const roomOptionId = optionResult.insertId;
                             
+                            if (existingOption.length > 0) {
+                                // Update existing
+                                await connection.query(
+                                    `UPDATE offline_hotel_room_options SET
+                                        room_name = ?, price = ?, amenities = ?, max_occupancy = ?,
+                                        bed_type = ?, room_size = ?, available_rooms = ?, description = ?
+                                    WHERE id = ?`,
+                                    [
+                                        hotel.roomType || '',
+                                        hotel.price || '',
+                                        safeJSONStringify(hotel.amenities || []),
+                                        hotel.maxOccupancy || 2,
+                                        hotel.bedType || null,
+                                        hotel.roomSize || null,
+                                        hotel.availableRooms || 0,
+                                        hotel.description || null,
+                                        roomOptionId
+                                    ]
+                                );
+                            } else {
+                                // Insert new
+                                const [optionResult] = await connection.query(
+                                    `INSERT INTO offline_hotel_room_options 
+                                    (hotel_id, room_type_id, room_name, price, amenities, max_occupancy, 
+                                     bed_type, room_size, available_rooms, description) 
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    [
+                                        hotelId,
+                                        roomTypeId,
+                                        hotel.roomType || '',
+                                        hotel.price || '',
+                                        safeJSONStringify(hotel.amenities || []),
+                                        hotel.maxOccupancy || 2,
+                                        hotel.bedType || null,
+                                        hotel.roomSize || null,
+                                        hotel.availableRooms || 0,
+                                        hotel.description || null
+                                    ]
+                                );
+                                roomOptionId = optionResult.insertId;
+                            }
+                            
+                            // Only add NEW images (existing ones are already in DB)
                             metadataArray.forEach((metadata, index) => {
                                 if (metadata && metadata.category === category && metadata.hotelIndex === hotelIndex) {
                                     if (roomImageFiles[index]) {
@@ -768,6 +840,18 @@ router.put('/:id', (req, res) => {
                             });
                         }
                     }
+                }
+                
+                // Delete room types that are no longer enabled
+                const enabledCategories = Object.entries(parsedRoomTypesData)
+                    .filter(([_, data]) => data.enabled)
+                    .map(([category]) => category);
+                    
+                if (enabledCategories.length > 0) {
+                    await connection.query(
+                        'DELETE FROM offline_hotel_room_types WHERE hotel_id = ? AND room_category NOT IN (?)',
+                        [hotelId, enabledCategories]
+                    );
                 }
             }
 
@@ -790,6 +874,7 @@ router.put('/:id', (req, res) => {
         }
     });
 });
+
 
 // =====================================================
 // DELETE OFFLINE HOTEL
