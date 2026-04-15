@@ -110,8 +110,21 @@ router.get('/:id', async (req, res) => {
             ORDER BY rg.sort_order
         `, [req.params.id]);
 
+        // Parse places_nearby_qa JSON if exists
+        let placesNearbyQA = [];
+        if (gateway[0].places_nearby_qa) {
+            try {
+                placesNearbyQA = JSON.parse(gateway[0].places_nearby_qa);
+            } catch (e) {
+                placesNearbyQA = [];
+            }
+        }
+
         res.json({
-            gateway: gateway[0],
+            gateway: {
+                ...gateway[0],
+                places_nearby_qa: placesNearbyQA
+            },
             images: images,
             related_gateways: relatedGateways
         });
@@ -120,12 +133,15 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// CREATE new weekend gateway (with tour cost fields)
+// CREATE new weekend gateway (with all fields)
 router.post('/', async (req, res) => {
     const { 
         gateway_code,
         name,
+        city_name,
+        duration,
         price,
+        emi_price,
         per_pax_twin,
         per_pax_triple,
         child_with_bed,
@@ -135,20 +151,32 @@ router.post('/', async (req, res) => {
         overview,
         inclusive,
         exclusive,
-        places_nearby,
+        amenities,
+        places_nearby_qa,
         booking_policy,
         cancellation_policy
     } = req.body;
 
     try {
+        // Convert places_nearby_qa to JSON string
+        const placesNearbyQAJson = places_nearby_qa && places_nearby_qa.length > 0 
+            ? JSON.stringify(places_nearby_qa) 
+            : null;
+
         const [result] = await pool.query(
             `INSERT INTO weekend_gateways 
-            (gateway_code, name, price, per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, overview, inclusive, exclusive, places_nearby, booking_policy, cancellation_policy, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            (gateway_code, name, city_name, duration, price, emi_price, 
+             per_pax_twin, per_pax_triple, child_with_bed, child_without_bed, infant, per_pax_single, 
+             overview, inclusive, exclusive, amenities, places_nearby_qa, 
+             booking_policy, cancellation_policy, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
                 gateway_code,
                 name,
+                city_name || '',
+                duration || '',
                 price,
+                emi_price || null,
                 per_pax_twin || null,
                 per_pax_triple || null,
                 child_with_bed || null,
@@ -158,7 +186,8 @@ router.post('/', async (req, res) => {
                 overview || '',
                 inclusive || '',
                 exclusive || '',
-                places_nearby || '',
+                amenities || '',
+                placesNearbyQAJson,
                 booking_policy || '',
                 cancellation_policy || ''
             ]
@@ -175,12 +204,15 @@ router.post('/', async (req, res) => {
     }
 });
 
-// UPDATE weekend gateway (with tour cost fields)
+// UPDATE weekend gateway (with all fields)
 router.put('/:id', async (req, res) => {
     const gatewayId = req.params.id;
     const { 
         name,
+        city_name,
+        duration,
         price,
+        emi_price,
         per_pax_twin,
         per_pax_triple,
         child_with_bed,
@@ -190,22 +222,33 @@ router.put('/:id', async (req, res) => {
         overview,
         inclusive,
         exclusive,
-        places_nearby,
+        amenities,
+        places_nearby_qa,
         booking_policy,
         cancellation_policy,
         status
     } = req.body;
 
     try {
+        // Convert places_nearby_qa to JSON string
+        const placesNearbyQAJson = places_nearby_qa && places_nearby_qa.length > 0 
+            ? JSON.stringify(places_nearby_qa) 
+            : null;
+
         const [result] = await pool.query(
             `UPDATE weekend_gateways 
-             SET name = ?, price = ?, per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
-                 child_without_bed = ?, infant = ?, per_pax_single = ?, overview = ?, inclusive = ?, 
-                 exclusive = ?, places_nearby = ?, booking_policy = ?, cancellation_policy = ?, status = ?
+             SET name = ?, city_name = ?, duration = ?, price = ?, emi_price = ?,
+                 per_pax_twin = ?, per_pax_triple = ?, child_with_bed = ?, 
+                 child_without_bed = ?, infant = ?, per_pax_single = ?, 
+                 overview = ?, inclusive = ?, exclusive = ?, amenities = ?, 
+                 places_nearby_qa = ?, booking_policy = ?, cancellation_policy = ?, status = ?
              WHERE gateway_id = ?`,
             [
                 name,
+                city_name || '',
+                duration || '',
                 price,
+                emi_price || null,
                 per_pax_twin || null,
                 per_pax_triple || null,
                 child_with_bed || null,
@@ -215,7 +258,8 @@ router.put('/:id', async (req, res) => {
                 overview || '',
                 inclusive || '',
                 exclusive || '',
-                places_nearby || '',
+                amenities || '',
+                placesNearbyQAJson,
                 booking_policy || '',
                 cancellation_policy || '',
                 status || 1,
