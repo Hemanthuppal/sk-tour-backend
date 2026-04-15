@@ -684,7 +684,7 @@ router.post('/bookings', async (req, res) => {
                     state,
                     country || 'India',
                     no_of_adults,
-                    no_of_rooms,
+                  no_of_rooms || 0,
                     no_of_child || 0
                 ]
             );

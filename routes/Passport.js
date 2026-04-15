@@ -28,31 +28,21 @@ router.get("/passport/:id", async (req, res) => {
   }
 });
 
-
-
-
-  router.post("/passport", (req, res) => {
-
-  const sql = "INSERT INTO passport_form_one SET ?";
-
-  db.query(sql, req.body, (err, result) => {
-
-    if (err) {
-      return res.status(500).json({
-        success: false,
-        message: "Insert failed",
-        error: err
-      });
+router.post("/form", async (req, res) => {
+  try {
+    const sanitizedData = {};
+    for (const [key, value] of Object.entries(req.body)) {
+      sanitizedData[key] = value === '' ? null : value;
     }
 
-    res.json({
-      success: true,
-      message: "Passport form created",
-      id: result.insertId
-    });
+    const [result] = await db.query("INSERT INTO passport_form_one SET ?", sanitizedData);
 
-  });
+    res.json({ success: true, id: result.insertId });
 
+  } catch (err) {
+    console.error("DB ERROR:", err.sqlMessage || err.message);
+    res.status(500).json({ success: false, message: err.sqlMessage || "Insert failed" });
+  }
 });
 router.put("/passport/:id", async (req, res) => {
   try {

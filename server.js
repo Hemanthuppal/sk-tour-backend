@@ -199,13 +199,14 @@ app.use(
   '/uploads',
   express.static(path.join(__dirname, 'public/uploads'))
 );
+app.use('/api/passport', Passport);
 
 // Serve uploaded videos statically
 app.use('/video-uploads', express.static(uploadsDir));
 app.use('/video-uploads/videos', express.static(videosDir));
 app.use('/api/leads', leadsRoutes);
 
-app.use('/api/passport', Passport);
+
 app.use('/api/carousel-images', carouselImagesRoutes);
 
 // === VIDEO CAROUSEL ROUTE ===
@@ -227,7 +228,6 @@ app.use('/api/itineraries', require('./routes/tourItineraries'));
 app.use('/api/inclusions', require('./routes/tourInclusions'));
 app.use('/api/exclusions', require('./routes/tourExclusions'));
 app.use('/api/images', require('./routes/tourImages'));
-
 app.use('/api/tour-transports', tourTransportsRouter);
 app.use('/api/tour-booking-poi', tourBookingPoiRouter);
 app.use('/api/tour-cancellation', tourCancellationRouter);
