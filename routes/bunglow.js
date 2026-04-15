@@ -102,6 +102,16 @@ router.get('/:id', async (req, res) => {
             [req.params.id]
         );
 
+        // Parse places_nearby_qa JSON if exists
+        let placesNearbyQA = [];
+        if (bungalow[0].places_nearby_qa) {
+            try {
+                placesNearbyQA = JSON.parse(bungalow[0].places_nearby_qa);
+            } catch (e) {
+                placesNearbyQA = [];
+            }
+        }
+
         // Format rate descriptions for frontend
         const rateDescriptions = {
             week_day_rate_desc: bungalow[0].week_day_rate_desc || '',
@@ -111,7 +121,10 @@ router.get('/:id', async (req, res) => {
         };
 
         res.json({
-            bungalow: bungalow[0],
+            bungalow: {
+                ...bungalow[0],
+                places_nearby_qa: placesNearbyQA
+            },
             images: images,
             rate_descriptions: rateDescriptions
         });
@@ -125,11 +138,14 @@ router.post('/', async (req, res) => {
     const { 
         bungalow_code,
         name,
+        city_name,
+        duration,
         price,
         overview,
         inclusive,
         exclusive,
-        places_nearby,
+        amenities,
+        places_nearby_qa,
         booking_policy,
         cancellation_policy,
         week_day_rate_desc,
@@ -139,20 +155,28 @@ router.post('/', async (req, res) => {
     } = req.body;
 
     try {
+        // Convert places_nearby_qa to JSON string
+        const placesNearbyQAJson = places_nearby_qa && places_nearby_qa.length > 0 
+            ? JSON.stringify(places_nearby_qa) 
+            : null;
+
         const [result] = await pool.query(
             `INSERT INTO bungalows 
-            (bungalow_code, name, price, overview, inclusive, exclusive, places_nearby, 
-             booking_policy, cancellation_policy, week_day_rate_desc, weekend_rate_desc, 
-             long_holidays_desc, festival_holidays_desc, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+            (bungalow_code, name, city_name, duration, price, overview, inclusive, exclusive, 
+             amenities, places_nearby_qa, booking_policy, cancellation_policy, 
+             week_day_rate_desc, weekend_rate_desc, long_holidays_desc, festival_holidays_desc, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
             [
                 bungalow_code,
                 name,
+                city_name || '',
+                duration || '',
                 price,
                 overview || '',
                 inclusive || '',
                 exclusive || '',
-                places_nearby || '',
+                amenities || '',
+                placesNearbyQAJson,
                 booking_policy || '',
                 cancellation_policy || '',
                 week_day_rate_desc || '',
@@ -178,11 +202,14 @@ router.put('/:id', async (req, res) => {
     const bungalowId = req.params.id;
     const { 
         name,
+        city_name,
+        duration,
         price,
         overview,
         inclusive,
         exclusive,
-        places_nearby,
+        amenities,
+        places_nearby_qa,
         booking_policy,
         cancellation_policy,
         status,
@@ -193,20 +220,29 @@ router.put('/:id', async (req, res) => {
     } = req.body;
 
     try {
+        // Convert places_nearby_qa to JSON string
+        const placesNearbyQAJson = places_nearby_qa && places_nearby_qa.length > 0 
+            ? JSON.stringify(places_nearby_qa) 
+            : null;
+
         const [result] = await pool.query(
             `UPDATE bungalows 
-             SET name = ?, price = ?, overview = ?, inclusive = ?, exclusive = ?, 
-                 places_nearby = ?, booking_policy = ?, cancellation_policy = ?, 
-                 week_day_rate_desc = ?, weekend_rate_desc = ?, long_holidays_desc = ?, 
-                 festival_holidays_desc = ?, status = ?
+             SET name = ?, city_name = ?, duration = ?, price = ?, overview = ?, 
+                 inclusive = ?, exclusive = ?, amenities = ?, places_nearby_qa = ?,
+                 booking_policy = ?, cancellation_policy = ?, 
+                 week_day_rate_desc = ?, weekend_rate_desc = ?, 
+                 long_holidays_desc = ?, festival_holidays_desc = ?, status = ?
              WHERE bungalow_id = ?`,
             [
                 name,
+                city_name || '',
+                duration || '',
                 price,
                 overview || '',
                 inclusive || '',
                 exclusive || '',
-                places_nearby || '',
+                amenities || '',
+                placesNearbyQAJson,
                 booking_policy || '',
                 cancellation_policy || '',
                 week_day_rate_desc || '',
