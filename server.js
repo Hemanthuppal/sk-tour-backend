@@ -194,6 +194,9 @@ app.use('/uploads/weekend-gateways', express.static(path.join(__dirname, 'upload
 // Add this with your other static middleware
 app.use('/uploads/hotels', express.static(path.join(__dirname, 'uploads/hotels')));
 
+// ✅ ADD THIS LINE:
+app.use('/uploads/rooms', express.static(path.join(__dirname, 'uploads/rooms')));
+
 // ✅ Existing uploads (SECOND)
 app.use(
   '/uploads',
