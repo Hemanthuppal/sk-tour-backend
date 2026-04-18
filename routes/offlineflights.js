@@ -37,6 +37,13 @@ const formatDateFromDB = (date) => {
   return date;
 };
 
+// Calculate total amount helper
+const calculateTotalAmount = (adults, pricePerAdult, children, pricePerChild) => {
+  const adultTotal = (adults || 0) * (parseFloat(pricePerAdult) || 0);
+  const childTotal = (children || 0) * (parseFloat(pricePerChild) || 0);
+  return adultTotal + childTotal;
+};
+
 // Get all offline flights
 router.get('/', async (req, res) => {
     try {
@@ -114,6 +121,14 @@ router.post('/', async (req, res) => {
             flightDetails
         } = req.body;
 
+        // Calculate total amount
+        const totalAmount = calculateTotalAmount(
+            flightDetails.adults,
+            flightDetails.pricePerAdult,
+            flightDetails.children,
+            flightDetails.pricePerChild
+        );
+
         // Insert main flight details with properly formatted dates
         const [flightResult] = await connection.query(`
             INSERT INTO offline_flights (
@@ -141,9 +156,11 @@ router.post('/', async (req, res) => {
                 refundable_status_description,
                 meals_included,
                 price_per_adult,
+                price_per_child,
+                total_amount,
                 created_at,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
             [
                 bookingType,
                 flightDetails.fromCity,
@@ -168,7 +185,9 @@ router.post('/', async (req, res) => {
                 flightDetails.mealsSeatDescription,
                 flightDetails.refundableStatusDescription,
                 flightDetails.mealsIncluded ? 1 : 0,
-                flightDetails.pricePerAdult
+                flightDetails.pricePerAdult,
+                flightDetails.pricePerChild || null,
+                totalAmount
             ]
         );
 
@@ -204,6 +223,14 @@ router.put('/:id', async (req, res) => {
             flightDetails
         } = req.body;
 
+        // Calculate total amount
+        const totalAmount = calculateTotalAmount(
+            flightDetails.adults,
+            flightDetails.pricePerAdult,
+            flightDetails.children,
+            flightDetails.pricePerChild
+        );
+
         await connection.query(`
             UPDATE offline_flights SET
                 booking_type = ?,
@@ -230,6 +257,8 @@ router.put('/:id', async (req, res) => {
                 refundable_status_description = ?,
                 meals_included = ?,
                 price_per_adult = ?,
+                price_per_child = ?,
+                total_amount = ?,
                 updated_at = NOW()
             WHERE id = ?`,
             [
@@ -257,6 +286,8 @@ router.put('/:id', async (req, res) => {
                 flightDetails.refundableStatusDescription,
                 flightDetails.mealsIncluded ? 1 : 0,
                 flightDetails.pricePerAdult,
+                flightDetails.pricePerChild || null,
+                totalAmount,
                 req.params.id
             ]
         );
