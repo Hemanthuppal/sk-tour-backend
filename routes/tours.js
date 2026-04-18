@@ -619,17 +619,17 @@ router.get('/tour/full/all-festival', async (req, res) => {
 
 // ==================== EXISTING ROUTES (unchanged) ====================
 router.get('/tour/full/individual/:tour_id', async (req, res) => {
-  // ... existing code ...
   const tourId = req.params.tour_id;
 
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY INDIVIDUAL)
+    // 1️⃣ BASIC DETAILS (ONLY INDIVIDUAL) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'Individual'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'Individual'
     `, [tourId]);
 
     if (tourRows.length === 0) {
