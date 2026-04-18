@@ -280,11 +280,12 @@ router.get('/tour/full/sports/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (SPORTS TOUR)
+    // 1️⃣ BASIC DETAILS (SPORTS TOUR) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'sports'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'sports'
     `, [tourId]);
 
     if (tourRows.length === 0) {
@@ -392,11 +393,12 @@ router.get('/tour/full/festival/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (FESTIVAL TOUR)
+     // 1️⃣ BASIC DETAILS (FESTIVAL TOUR) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'festival'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'festival'
     `, [tourId]);
 
     if (tourRows.length === 0) {
