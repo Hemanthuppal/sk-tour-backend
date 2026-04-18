@@ -737,11 +737,12 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY HONEYMOON)
+     // 1️⃣ BASIC DETAILS (ONLY HONEYMOON) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'honeymoon'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'honeymoon'
     `, [tourId]);
 
     if (tourRows.length === 0) {
@@ -849,11 +850,12 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY GROUP)
+    // 1️⃣ BASIC DETAILS (ONLY GROUP) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'Group'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'Group'
     `, [tourId]);
 
     if (tourRows.length === 0) {
@@ -961,11 +963,12 @@ router.get('/tour/full/ladiesspecial/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY LADIES SPECIAL)
+   // 1️⃣ BASIC DETAILS (ONLY LADIES SPECIAL) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'ladiesspecial'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'ladiesspecial'
     `, [tourId]);
 
     if (tourRows.length === 0) {
@@ -1074,10 +1077,12 @@ router.get('/tour/full/seniorcitizen/:tour_id', async (req, res) => {
     const response = {};
 
     // 1️⃣ BASIC DETAILS (ONLY SENIOR CITIZEN)
+   // 1️⃣ BASIC DETAILS (ONLY SENIOR CITIZEN) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'seniorcitizen'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'seniorcitizen'
     `, [tourId]);
 
     if (tourRows.length === 0) {
@@ -1185,16 +1190,18 @@ router.get('/tour/full/student/:tour_id', async (req, res) => {
   try {
     const response = {};
 
-    // 1️⃣ BASIC DETAILS (ONLY STUDENT)
+   // 1️⃣ BASIC DETAILS (ONLY STUDENT) - WITH DESTINATION NAME
     const [tourRows] = await pool.query(`
-      SELECT *
-      FROM tours
-      WHERE tour_id = ? AND tour_type = 'student'
+      SELECT t.*, d.name as primary_destination_name
+      FROM tours t
+      LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
+      WHERE t.tour_id = ? AND t.tour_type = 'student'
     `, [tourId]);
 
     if (tourRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Student tour not found' });
     }
+
 
     response.basic_details = tourRows[0];
 
