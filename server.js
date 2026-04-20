@@ -120,7 +120,7 @@ const Vendors = require('./routes/Vendors/Vendors')
 const carouselImagesRoutes = require('./routes/carouselimages');
 
 // In your main server.js or app.js file
-const exhibitionRoutes = require('./routes/ExhibitionRoutes/exhibitionroutes (1)');
+const exhibitionRoutes = require('./routes/ExhibitionRoutes/exhibitionroutes');
 
 // Import routes
 const offlineFlightsRoutes = require('./routes/offlineflights');

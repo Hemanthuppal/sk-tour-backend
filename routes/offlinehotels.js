@@ -198,6 +198,7 @@ router.get('/:id', async (req, res) => {
                 roomTypesData[category].hotels.push({
                     id: option.id,
                     roomType: option.room_name,
+                    price: option.price,
                     amenities: safeJSONParse(option.amenities, []),
                     maxOccupancy: option.max_occupancy,
                     bedType: option.bed_type,
@@ -376,14 +377,15 @@ router.post('/', (req, res) => {
                             
                             const optionQuery = `
                                 INSERT INTO offline_hotel_room_options 
-                                (hotel_id, room_type_id, room_name, amenities, max_occupancy, 
+                                (hotel_id, room_type_id, room_name, price, amenities, max_occupancy, 
                                  bed_type, room_size, available_rooms, description) 
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             `;
                             const optionValues = [
                                 hotelId,
                                 roomTypeId,
                                 hotel.roomType || '',
+                                hotel.price || '',
                                 safeJSONStringify(hotel.amenities || []),
                                 hotel.maxOccupancy || 2,
                                 hotel.bedType || null,
@@ -637,11 +639,12 @@ router.put('/:id', (req, res) => {
                                 // Update existing
                                 await connection.query(
                                     `UPDATE offline_hotel_room_options SET
-                                        room_name = ?, amenities = ?, max_occupancy = ?,
+                                        room_name = ?, price = ?, amenities = ?, max_occupancy = ?,
                                         bed_type = ?, room_size = ?, available_rooms = ?, description = ?
                                     WHERE id = ?`,
                                     [
                                         hotel.roomType || '',
+                                        hotel.price || '',
                                         safeJSONStringify(hotel.amenities || []),
                                         hotel.maxOccupancy || 2,
                                         hotel.bedType || null,
@@ -655,14 +658,15 @@ router.put('/:id', (req, res) => {
                                 // Insert new
                                 const optionQuery = `
                                     INSERT INTO offline_hotel_room_options 
-                                    (hotel_id, room_type_id, room_name, amenities, max_occupancy, 
+                                    (hotel_id, room_type_id, room_name, price, amenities, max_occupancy, 
                                      bed_type, room_size, available_rooms, description) 
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 `;
                                 const optionValues = [
                                     hotelId,
                                     roomTypeId,
                                     hotel.roomType || '',
+                                    hotel.price || '',
                                     safeJSONStringify(hotel.amenities || []),
                                     hotel.maxOccupancy || 2,
                                     hotel.bedType || null,
