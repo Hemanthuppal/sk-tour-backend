@@ -134,7 +134,7 @@ const flightspaymentRoutes = require('./routes/flightspayments_v1');
 const bungalowRoutes = require('./routes/bunglow');
 const oneDayPicnicRoutes = require('./routes/onedaypicnic');
 const weekendGatewayRoutes = require('./routes/weekend');
-
+const insuranceRoutes = require('./routes/insurance');
 const Passport = require('./routes/Passport');
 
 const user = require('./routes/user')
@@ -203,6 +203,7 @@ app.use(
   express.static(path.join(__dirname, 'public/uploads'))
 );
 app.use('/api/passport', Passport);
+app.use('/', insuranceRoutes);
 
 // Serve uploaded videos statically
 app.use('/video-uploads', express.static(uploadsDir));
