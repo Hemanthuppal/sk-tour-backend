@@ -64,13 +64,6 @@ const safeJSONStringify = (data) => {
     return data;
 };
 
-// Calculate total amount helper
-const calculateTotalAmount = (adults, pricePerAdult, children, pricePerChild) => {
-    const adultTotal = (adults || 0) * (parseFloat(pricePerAdult) || 0);
-    const childTotal = (children || 0) * (parseFloat(pricePerChild) || 0);
-    return adultTotal + childTotal;
-};
-
 // Configure multer storage
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -165,7 +158,6 @@ router.get('/:id', async (req, res) => {
 
         const hotel = hotelRows[0];
         
-        // Parse JSON fields safely
         hotel.children_ages = safeJSONParse(hotel.children_ages, []);
         hotel.additional_images = safeJSONParse(hotel.additional_images, []);
         hotel.amenities = safeJSONParse(hotel.amenities, []);
@@ -173,7 +165,6 @@ router.get('/:id', async (req, res) => {
         hotel.check_in_date = formatDateFromDB(hotel.check_in_date);
         hotel.check_out_date = formatDateFromDB(hotel.check_out_date);
 
-        // Get room types data
         const [roomTypes] = await db.query(
             'SELECT * FROM offline_hotel_room_types WHERE hotel_id = ?',
             [hotelId]
@@ -207,8 +198,6 @@ router.get('/:id', async (req, res) => {
                 roomTypesData[category].hotels.push({
                     id: option.id,
                     roomType: option.room_name,
-                    price: option.price,
-                    pricePerChild: option.price_per_child,
                     amenities: safeJSONParse(option.amenities, []),
                     maxOccupancy: option.max_occupancy,
                     bedType: option.bed_type,
@@ -271,21 +260,12 @@ router.post('/', (req, res) => {
                 roomTypesData
             } = req.body;
 
-            // Parse JSON strings safely
             const parsedSearchDetails = safeJSONParse(searchDetails, {});
             const parsedHotelDetails = safeJSONParse(hotelDetails, {});
             const parsedDescriptions = safeJSONParse(descriptions, {});
             const parsedChildrenAges = safeJSONParse(childrenAges, []);
             const parsedCustomAmenities = safeJSONParse(customAmenities, []);
             const parsedRoomTypesData = safeJSONParse(roomTypesData, {});
-
-            // Calculate total amount for hotel (main price)
-            const totalAmount = calculateTotalAmount(
-                parsedSearchDetails.adults || 1,
-                parsedHotelDetails.price,
-                parsedSearchDetails.children || 0,
-                parsedHotelDetails.pricePerChild
-            );
 
             // Handle main image
             let mainImagePath = parsedHotelDetails.mainImage || null;
@@ -307,124 +287,53 @@ router.post('/', (req, res) => {
                 ...parsedCustomAmenities
             ];
 
-            // Check if new columns exist
-            let hasNewColumns = true;
-            try {
-                await connection.query('SELECT price_per_child, total_amount FROM offline_hotels LIMIT 1');
-            } catch (e) {
-                hasNewColumns = false;
-                console.log('price_per_child or total_amount columns not found, skipping');
-            }
-
-            // Build insert query based on available columns
-            let insertQuery;
-            let insertValues;
-
-            if (hasNewColumns) {
-                insertQuery = `
-                    INSERT INTO offline_hotels (
-                        country, city, location, property_name,
-                        check_in_date, check_out_date, rooms, adults, children, pets,
-                        children_ages,
-                        hotel_name, hotel_location, star_rating, main_image,
-                        additional_images, rating, total_ratings, price, price_per_child, total_amount, taxes,
-                        amenities, custom_amenities, status, free_stay_for_kids, limited_time_sale,
-                        sale_price, original_price, login_to_book, pay_later,
-                        overview_description, hotel_facilities_description,
-                        airport_transfers_description, meal_plan_description,
-                        taxes_description
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `;
-                insertValues = [
-                    parsedSearchDetails.country || '',
-                    parsedSearchDetails.city || '',
-                    parsedSearchDetails.location || null,
-                    parsedSearchDetails.propertyName || null,
-                    formatDateForDB(parsedSearchDetails.checkInDate),
-                    formatDateForDB(parsedSearchDetails.checkOutDate),
-                    parsedSearchDetails.rooms || 1,
-                    parsedSearchDetails.adults || 2,
-                    parsedSearchDetails.children || 0,
-                    parsedSearchDetails.pets ? 1 : 0,
-                    safeJSONStringify(parsedChildrenAges),
-                    parsedHotelDetails.hotelName || '',
-                    parsedHotelDetails.location || '',
-                    parsedHotelDetails.starRating || 3,
-                    mainImagePath,
-                    safeJSONStringify(additionalImagePaths),
-                    parsedHotelDetails.rating || 0,
-                    parsedHotelDetails.totalRatings || 0,
-                    parsedHotelDetails.price || '',
-                    parsedHotelDetails.pricePerChild || null,
-                    totalAmount,
-                    parsedHotelDetails.taxes || null,
-                    safeJSONStringify(allAmenities),
-                    safeJSONStringify(parsedCustomAmenities),
-                    parsedHotelDetails.status || 'Available',
-                    parsedHotelDetails.freeStayForKids ? 1 : 0,
-                    parsedHotelDetails.limitedTimeSale ? 1 : 0,
-                    parsedHotelDetails.salePrice || null,
-                    parsedHotelDetails.originalPrice || null,
-                    parsedHotelDetails.loginToBook ? 1 : 0,
-                    parsedHotelDetails.payLater ? 1 : 0,
-                    parsedDescriptions.overview || null,
-                    parsedDescriptions.hotelFacilities || null,
-                    parsedDescriptions.airportTransfers || null,
-                    parsedDescriptions.mealPlan || null,
-                    parsedDescriptions.taxesDescription || null
-                ];
-            } else {
-                insertQuery = `
-                    INSERT INTO offline_hotels (
-                        country, city, location, property_name,
-                        check_in_date, check_out_date, rooms, adults, children, pets,
-                        children_ages,
-                        hotel_name, hotel_location, star_rating, main_image,
-                        additional_images, rating, total_ratings, price, taxes,
-                        amenities, custom_amenities, status, free_stay_for_kids, limited_time_sale,
-                        sale_price, original_price, login_to_book, pay_later,
-                        overview_description, hotel_facilities_description,
-                        airport_transfers_description, meal_plan_description,
-                        taxes_description
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `;
-                insertValues = [
-                    parsedSearchDetails.country || '',
-                    parsedSearchDetails.city || '',
-                    parsedSearchDetails.location || null,
-                    parsedSearchDetails.propertyName || null,
-                    formatDateForDB(parsedSearchDetails.checkInDate),
-                    formatDateForDB(parsedSearchDetails.checkOutDate),
-                    parsedSearchDetails.rooms || 1,
-                    parsedSearchDetails.adults || 2,
-                    parsedSearchDetails.children || 0,
-                    parsedSearchDetails.pets ? 1 : 0,
-                    safeJSONStringify(parsedChildrenAges),
-                    parsedHotelDetails.hotelName || '',
-                    parsedHotelDetails.location || '',
-                    parsedHotelDetails.starRating || 3,
-                    mainImagePath,
-                    safeJSONStringify(additionalImagePaths),
-                    parsedHotelDetails.rating || 0,
-                    parsedHotelDetails.totalRatings || 0,
-                    parsedHotelDetails.price || '',
-                    parsedHotelDetails.taxes || null,
-                    safeJSONStringify(allAmenities),
-                    safeJSONStringify(parsedCustomAmenities),
-                    parsedHotelDetails.status || 'Available',
-                    parsedHotelDetails.freeStayForKids ? 1 : 0,
-                    parsedHotelDetails.limitedTimeSale ? 1 : 0,
-                    parsedHotelDetails.salePrice || null,
-                    parsedHotelDetails.originalPrice || null,
-                    parsedHotelDetails.loginToBook ? 1 : 0,
-                    parsedHotelDetails.payLater ? 1 : 0,
-                    parsedDescriptions.overview || null,
-                    parsedDescriptions.hotelFacilities || null,
-                    parsedDescriptions.airportTransfers || null,
-                    parsedDescriptions.mealPlan || null,
-                    parsedDescriptions.taxesDescription || null
-                ];
-            }
+            const insertQuery = `
+                INSERT INTO offline_hotels (
+                    country, city, location, property_name,
+                    check_in_date, check_out_date, rooms, adults, children, pets,
+                    children_ages,
+                    hotel_name, hotel_location, star_rating, main_image,
+                    additional_images, rating, total_ratings,
+                    amenities, custom_amenities, status, free_stay_for_kids, limited_time_sale,
+                    sale_price, original_price, login_to_book, pay_later,
+                    overview_description, hotel_facilities_description,
+                    airport_transfers_description, meal_plan_description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            
+            const insertValues = [
+                parsedSearchDetails.country || '',
+                parsedSearchDetails.city || '',
+                parsedSearchDetails.location || null,
+                parsedSearchDetails.propertyName || null,
+                formatDateForDB(parsedSearchDetails.checkInDate),
+                formatDateForDB(parsedSearchDetails.checkOutDate),
+                parsedSearchDetails.rooms || 1,
+                parsedSearchDetails.adults || 2,
+                parsedSearchDetails.children || 0,
+                parsedSearchDetails.pets ? 1 : 0,
+                safeJSONStringify(parsedChildrenAges),
+                parsedHotelDetails.hotelName || '',
+                parsedHotelDetails.location || '',
+                parsedHotelDetails.starRating || 3,
+                mainImagePath,
+                safeJSONStringify(additionalImagePaths),
+                parsedHotelDetails.rating || 0,
+                parsedHotelDetails.totalRatings || 0,
+                safeJSONStringify(allAmenities),
+                safeJSONStringify(parsedCustomAmenities),
+                parsedHotelDetails.status || 'Available',
+                parsedHotelDetails.freeStayForKids ? 1 : 0,
+                parsedHotelDetails.limitedTimeSale ? 1 : 0,
+                parsedHotelDetails.salePrice || null,
+                parsedHotelDetails.originalPrice || null,
+                parsedHotelDetails.loginToBook ? 1 : 0,
+                parsedHotelDetails.payLater ? 1 : 0,
+                parsedDescriptions.overview || null,
+                parsedDescriptions.hotelFacilities || null,
+                parsedDescriptions.airportTransfers || null,
+                parsedDescriptions.mealPlan || null
+            ];
 
             console.log('Insert values count:', insertValues.length);
             
@@ -452,15 +361,6 @@ router.post('/', (req, res) => {
                     metadataArray = [safeJSONParse(roomImageMetadata, {})];
                 }
 
-                // Check if room options table has new columns
-                let roomHasNewColumns = true;
-                try {
-                    await connection.query('SELECT price_per_child, total_amount FROM offline_hotel_room_options LIMIT 1');
-                } catch (e) {
-                    roomHasNewColumns = false;
-                    console.log('room options new columns not found, skipping');
-                }
-
                 for (const [category, categoryData] of Object.entries(parsedRoomTypesData)) {
                     if (!categoryData || !categoryData.enabled) continue;
                     
@@ -474,58 +374,23 @@ router.post('/', (req, res) => {
                         for (let hotelIndex = 0; hotelIndex < categoryData.hotels.length; hotelIndex++) {
                             const hotel = categoryData.hotels[hotelIndex];
                             
-                            // Calculate total for this room option
-                            const roomTotalAmount = calculateTotalAmount(
-                                parsedSearchDetails.adults || 1,
-                                hotel.price,
-                                parsedSearchDetails.children || 0,
-                                hotel.pricePerChild
-                            );
-                            
-                            let optionQuery;
-                            let optionValues;
-                            
-                            if (roomHasNewColumns) {
-                                optionQuery = `
-                                    INSERT INTO offline_hotel_room_options 
-                                    (hotel_id, room_type_id, room_name, price, price_per_child, total_amount, 
-                                     amenities, max_occupancy, bed_type, room_size, available_rooms, description) 
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                `;
-                                optionValues = [
-                                    hotelId,
-                                    roomTypeId,
-                                    hotel.roomType || '',
-                                    hotel.price || '',
-                                    hotel.pricePerChild || null,
-                                    roomTotalAmount,
-                                    safeJSONStringify(hotel.amenities || []),
-                                    hotel.maxOccupancy || 2,
-                                    hotel.bedType || null,
-                                    hotel.roomSize || null,
-                                    hotel.availableRooms || 0,
-                                    hotel.description || null
-                                ];
-                            } else {
-                                optionQuery = `
-                                    INSERT INTO offline_hotel_room_options 
-                                    (hotel_id, room_type_id, room_name, price, amenities, max_occupancy, 
-                                     bed_type, room_size, available_rooms, description) 
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                `;
-                                optionValues = [
-                                    hotelId,
-                                    roomTypeId,
-                                    hotel.roomType || '',
-                                    hotel.price || '',
-                                    safeJSONStringify(hotel.amenities || []),
-                                    hotel.maxOccupancy || 2,
-                                    hotel.bedType || null,
-                                    hotel.roomSize || null,
-                                    hotel.availableRooms || 0,
-                                    hotel.description || null
-                                ];
-                            }
+                            const optionQuery = `
+                                INSERT INTO offline_hotel_room_options 
+                                (hotel_id, room_type_id, room_name, amenities, max_occupancy, 
+                                 bed_type, room_size, available_rooms, description) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            `;
+                            const optionValues = [
+                                hotelId,
+                                roomTypeId,
+                                hotel.roomType || '',
+                                safeJSONStringify(hotel.amenities || []),
+                                hotel.maxOccupancy || 2,
+                                hotel.bedType || null,
+                                hotel.roomSize || null,
+                                hotel.availableRooms || 0,
+                                hotel.description || null
+                            ];
                             
                             const [optionResult] = await connection.query(optionQuery, optionValues);
                             const roomOptionId = optionResult.insertId;
@@ -596,7 +461,6 @@ router.put('/:id', (req, res) => {
                 deletedRoomImages
             } = req.body;
 
-            // Parse JSON strings safely
             const parsedSearchDetails = safeJSONParse(searchDetails, {});
             const parsedHotelDetails = safeJSONParse(hotelDetails, {});
             const parsedDescriptions = safeJSONParse(descriptions, {});
@@ -604,14 +468,6 @@ router.put('/:id', (req, res) => {
             const parsedCustomAmenities = safeJSONParse(customAmenities, []);
             const parsedRoomTypesData = safeJSONParse(roomTypesData, {});
             const parsedDeletedRoomImages = safeJSONParse(deletedRoomImages, []);
-
-            // Calculate total amount for hotel
-            const totalAmount = calculateTotalAmount(
-                parsedSearchDetails.adults || 1,
-                parsedHotelDetails.price,
-                parsedSearchDetails.children || 0,
-                parsedHotelDetails.pricePerChild
-            );
 
             // Combine amenities with custom amenities
             const allAmenities = [
@@ -648,127 +504,56 @@ router.put('/:id', (req, res) => {
                 finalAdditionalImages = safeJSONParse(existingHotel[0].additional_images, []);
             }
 
-            // Check if new columns exist
-            let hasNewColumns = true;
-            try {
-                await connection.query('SELECT price_per_child, total_amount FROM offline_hotels LIMIT 1');
-            } catch (e) {
-                hasNewColumns = false;
-            }
-
-            // Build update query
-            let updateQuery;
-            let updateValues;
-
-            if (hasNewColumns) {
-                updateQuery = `
-                    UPDATE offline_hotels SET
-                        country = ?, city = ?, location = ?, property_name = ?,
-                        check_in_date = ?, check_out_date = ?, rooms = ?, adults = ?,
-                        children = ?, pets = ?, children_ages = ?,
-                        hotel_name = ?, hotel_location = ?, star_rating = ?,
-                        main_image = ?, additional_images = ?, rating = ?,
-                        total_ratings = ?, price = ?, price_per_child = ?, total_amount = ?, taxes = ?,
-                        amenities = ?, custom_amenities = ?, status = ?, free_stay_for_kids = ?, limited_time_sale = ?,
-                        sale_price = ?, original_price = ?, login_to_book = ?,
-                        pay_later = ?, overview_description = ?,
-                        hotel_facilities_description = ?, airport_transfers_description = ?,
-                        meal_plan_description = ?, taxes_description = ?
-                    WHERE id = ?
-                `;
-                updateValues = [
-                    parsedSearchDetails.country || '',
-                    parsedSearchDetails.city || '',
-                    parsedSearchDetails.location || null,
-                    parsedSearchDetails.propertyName || null,
-                    formatDateForDB(parsedSearchDetails.checkInDate),
-                    formatDateForDB(parsedSearchDetails.checkOutDate),
-                    parsedSearchDetails.rooms || 1,
-                    parsedSearchDetails.adults || 2,
-                    parsedSearchDetails.children || 0,
-                    parsedSearchDetails.pets ? 1 : 0,
-                    safeJSONStringify(parsedChildrenAges),
-                    parsedHotelDetails.hotelName || '',
-                    parsedHotelDetails.location || '',
-                    parsedHotelDetails.starRating || 3,
-                    mainImagePath,
-                    safeJSONStringify(finalAdditionalImages),
-                    parsedHotelDetails.rating || 0,
-                    parsedHotelDetails.totalRatings || 0,
-                    parsedHotelDetails.price || '',
-                    parsedHotelDetails.pricePerChild || null,
-                    totalAmount,
-                    parsedHotelDetails.taxes || null,
-                    safeJSONStringify(allAmenities),
-                    safeJSONStringify(parsedCustomAmenities),
-                    parsedHotelDetails.status || 'Available',
-                    parsedHotelDetails.freeStayForKids ? 1 : 0,
-                    parsedHotelDetails.limitedTimeSale ? 1 : 0,
-                    parsedHotelDetails.salePrice || null,
-                    parsedHotelDetails.originalPrice || null,
-                    parsedHotelDetails.loginToBook ? 1 : 0,
-                    parsedHotelDetails.payLater ? 1 : 0,
-                    parsedDescriptions.overview || null,
-                    parsedDescriptions.hotelFacilities || null,
-                    parsedDescriptions.airportTransfers || null,
-                    parsedDescriptions.mealPlan || null,
-                    parsedDescriptions.taxesDescription || null,
-                    hotelId
-                ];
-            } else {
-                updateQuery = `
-                    UPDATE offline_hotels SET
-                        country = ?, city = ?, location = ?, property_name = ?,
-                        check_in_date = ?, check_out_date = ?, rooms = ?, adults = ?,
-                        children = ?, pets = ?, children_ages = ?,
-                        hotel_name = ?, hotel_location = ?, star_rating = ?,
-                        main_image = ?, additional_images = ?, rating = ?,
-                        total_ratings = ?, price = ?, taxes = ?,
-                        amenities = ?, custom_amenities = ?, status = ?, free_stay_for_kids = ?, limited_time_sale = ?,
-                        sale_price = ?, original_price = ?, login_to_book = ?,
-                        pay_later = ?, overview_description = ?,
-                        hotel_facilities_description = ?, airport_transfers_description = ?,
-                        meal_plan_description = ?, taxes_description = ?
-                    WHERE id = ?
-                `;
-                updateValues = [
-                    parsedSearchDetails.country || '',
-                    parsedSearchDetails.city || '',
-                    parsedSearchDetails.location || null,
-                    parsedSearchDetails.propertyName || null,
-                    formatDateForDB(parsedSearchDetails.checkInDate),
-                    formatDateForDB(parsedSearchDetails.checkOutDate),
-                    parsedSearchDetails.rooms || 1,
-                    parsedSearchDetails.adults || 2,
-                    parsedSearchDetails.children || 0,
-                    parsedSearchDetails.pets ? 1 : 0,
-                    safeJSONStringify(parsedChildrenAges),
-                    parsedHotelDetails.hotelName || '',
-                    parsedHotelDetails.location || '',
-                    parsedHotelDetails.starRating || 3,
-                    mainImagePath,
-                    safeJSONStringify(finalAdditionalImages),
-                    parsedHotelDetails.rating || 0,
-                    parsedHotelDetails.totalRatings || 0,
-                    parsedHotelDetails.price || '',
-                    parsedHotelDetails.taxes || null,
-                    safeJSONStringify(allAmenities),
-                    safeJSONStringify(parsedCustomAmenities),
-                    parsedHotelDetails.status || 'Available',
-                    parsedHotelDetails.freeStayForKids ? 1 : 0,
-                    parsedHotelDetails.limitedTimeSale ? 1 : 0,
-                    parsedHotelDetails.salePrice || null,
-                    parsedHotelDetails.originalPrice || null,
-                    parsedHotelDetails.loginToBook ? 1 : 0,
-                    parsedHotelDetails.payLater ? 1 : 0,
-                    parsedDescriptions.overview || null,
-                    parsedDescriptions.hotelFacilities || null,
-                    parsedDescriptions.airportTransfers || null,
-                    parsedDescriptions.mealPlan || null,
-                    parsedDescriptions.taxesDescription || null,
-                    hotelId
-                ];
-            }
+            const updateQuery = `
+                UPDATE offline_hotels SET
+                    country = ?, city = ?, location = ?, property_name = ?,
+                    check_in_date = ?, check_out_date = ?, rooms = ?, adults = ?,
+                    children = ?, pets = ?, children_ages = ?,
+                    hotel_name = ?, hotel_location = ?, star_rating = ?,
+                    main_image = ?, additional_images = ?, rating = ?,
+                    total_ratings = ?,
+                    amenities = ?, custom_amenities = ?, status = ?, free_stay_for_kids = ?, limited_time_sale = ?,
+                    sale_price = ?, original_price = ?, login_to_book = ?,
+                    pay_later = ?, overview_description = ?,
+                    hotel_facilities_description = ?, airport_transfers_description = ?,
+                    meal_plan_description = ?
+                WHERE id = ?
+            `;
+            
+            const updateValues = [
+                parsedSearchDetails.country || '',
+                parsedSearchDetails.city || '',
+                parsedSearchDetails.location || null,
+                parsedSearchDetails.propertyName || null,
+                formatDateForDB(parsedSearchDetails.checkInDate),
+                formatDateForDB(parsedSearchDetails.checkOutDate),
+                parsedSearchDetails.rooms || 1,
+                parsedSearchDetails.adults || 2,
+                parsedSearchDetails.children || 0,
+                parsedSearchDetails.pets ? 1 : 0,
+                safeJSONStringify(parsedChildrenAges),
+                parsedHotelDetails.hotelName || '',
+                parsedHotelDetails.location || '',
+                parsedHotelDetails.starRating || 3,
+                mainImagePath,
+                safeJSONStringify(finalAdditionalImages),
+                parsedHotelDetails.rating || 0,
+                parsedHotelDetails.totalRatings || 0,
+                safeJSONStringify(allAmenities),
+                safeJSONStringify(parsedCustomAmenities),
+                parsedHotelDetails.status || 'Available',
+                parsedHotelDetails.freeStayForKids ? 1 : 0,
+                parsedHotelDetails.limitedTimeSale ? 1 : 0,
+                parsedHotelDetails.salePrice || null,
+                parsedHotelDetails.originalPrice || null,
+                parsedHotelDetails.loginToBook ? 1 : 0,
+                parsedHotelDetails.payLater ? 1 : 0,
+                parsedDescriptions.overview || null,
+                parsedDescriptions.hotelFacilities || null,
+                parsedDescriptions.airportTransfers || null,
+                parsedDescriptions.mealPlan || null,
+                hotelId
+            ];
 
             await connection.query(updateQuery, updateValues);
 
@@ -800,14 +585,6 @@ router.put('/:id', (req, res) => {
                         [deletedImage.imagePath]
                     );
                 }
-            }
-
-            // Check if room options table has new columns
-            let roomHasNewColumns = true;
-            try {
-                await connection.query('SELECT price_per_child, total_amount FROM offline_hotel_room_options LIMIT 1');
-            } catch (e) {
-                roomHasNewColumns = false;
             }
 
             // Process room types - UPDATE existing, INSERT new
@@ -850,15 +627,6 @@ router.put('/:id', (req, res) => {
                         for (let hotelIndex = 0; hotelIndex < categoryData.hotels.length; hotelIndex++) {
                             const hotel = categoryData.hotels[hotelIndex];
                             
-                            // Calculate total for this room option
-                            const roomTotalAmount = calculateTotalAmount(
-                                parsedSearchDetails.adults || 1,
-                                hotel.price,
-                                parsedSearchDetails.children || 0,
-                                hotel.pricePerChild
-                            );
-                            
-                            // Check if room option exists (by id)
                             let roomOptionId = hotel.id;
                             const [existingOption] = await connection.query(
                                 'SELECT id FROM offline_hotel_room_options WHERE id = ?',
@@ -867,98 +635,47 @@ router.put('/:id', (req, res) => {
                             
                             if (existingOption.length > 0) {
                                 // Update existing
-                                if (roomHasNewColumns) {
-                                    await connection.query(
-                                        `UPDATE offline_hotel_room_options SET
-                                            room_name = ?, price = ?, price_per_child = ?, total_amount = ?,
-                                            amenities = ?, max_occupancy = ?, bed_type = ?, 
-                                            room_size = ?, available_rooms = ?, description = ?
-                                        WHERE id = ?`,
-                                        [
-                                            hotel.roomType || '',
-                                            hotel.price || '',
-                                            hotel.pricePerChild || null,
-                                            roomTotalAmount,
-                                            safeJSONStringify(hotel.amenities || []),
-                                            hotel.maxOccupancy || 2,
-                                            hotel.bedType || null,
-                                            hotel.roomSize || null,
-                                            hotel.availableRooms || 0,
-                                            hotel.description || null,
-                                            roomOptionId
-                                        ]
-                                    );
-                                } else {
-                                    await connection.query(
-                                        `UPDATE offline_hotel_room_options SET
-                                            room_name = ?, price = ?, amenities = ?, max_occupancy = ?,
-                                            bed_type = ?, room_size = ?, available_rooms = ?, description = ?
-                                        WHERE id = ?`,
-                                        [
-                                            hotel.roomType || '',
-                                            hotel.price || '',
-                                            safeJSONStringify(hotel.amenities || []),
-                                            hotel.maxOccupancy || 2,
-                                            hotel.bedType || null,
-                                            hotel.roomSize || null,
-                                            hotel.availableRooms || 0,
-                                            hotel.description || null,
-                                            roomOptionId
-                                        ]
-                                    );
-                                }
+                                await connection.query(
+                                    `UPDATE offline_hotel_room_options SET
+                                        room_name = ?, amenities = ?, max_occupancy = ?,
+                                        bed_type = ?, room_size = ?, available_rooms = ?, description = ?
+                                    WHERE id = ?`,
+                                    [
+                                        hotel.roomType || '',
+                                        safeJSONStringify(hotel.amenities || []),
+                                        hotel.maxOccupancy || 2,
+                                        hotel.bedType || null,
+                                        hotel.roomSize || null,
+                                        hotel.availableRooms || 0,
+                                        hotel.description || null,
+                                        roomOptionId
+                                    ]
+                                );
                             } else {
                                 // Insert new
-                                let optionQuery;
-                                let optionValues;
-                                
-                                if (roomHasNewColumns) {
-                                    optionQuery = `
-                                        INSERT INTO offline_hotel_room_options 
-                                        (hotel_id, room_type_id, room_name, price, price_per_child, total_amount,
-                                         amenities, max_occupancy, bed_type, room_size, available_rooms, description) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    `;
-                                    optionValues = [
-                                        hotelId,
-                                        roomTypeId,
-                                        hotel.roomType || '',
-                                        hotel.price || '',
-                                        hotel.pricePerChild || null,
-                                        roomTotalAmount,
-                                        safeJSONStringify(hotel.amenities || []),
-                                        hotel.maxOccupancy || 2,
-                                        hotel.bedType || null,
-                                        hotel.roomSize || null,
-                                        hotel.availableRooms || 0,
-                                        hotel.description || null
-                                    ];
-                                } else {
-                                    optionQuery = `
-                                        INSERT INTO offline_hotel_room_options 
-                                        (hotel_id, room_type_id, room_name, price, amenities, max_occupancy, 
-                                         bed_type, room_size, available_rooms, description) 
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    `;
-                                    optionValues = [
-                                        hotelId,
-                                        roomTypeId,
-                                        hotel.roomType || '',
-                                        hotel.price || '',
-                                        safeJSONStringify(hotel.amenities || []),
-                                        hotel.maxOccupancy || 2,
-                                        hotel.bedType || null,
-                                        hotel.roomSize || null,
-                                        hotel.availableRooms || 0,
-                                        hotel.description || null
-                                    ];
-                                }
+                                const optionQuery = `
+                                    INSERT INTO offline_hotel_room_options 
+                                    (hotel_id, room_type_id, room_name, amenities, max_occupancy, 
+                                     bed_type, room_size, available_rooms, description) 
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                `;
+                                const optionValues = [
+                                    hotelId,
+                                    roomTypeId,
+                                    hotel.roomType || '',
+                                    safeJSONStringify(hotel.amenities || []),
+                                    hotel.maxOccupancy || 2,
+                                    hotel.bedType || null,
+                                    hotel.roomSize || null,
+                                    hotel.availableRooms || 0,
+                                    hotel.description || null
+                                ];
                                 
                                 const [optionResult] = await connection.query(optionQuery, optionValues);
                                 roomOptionId = optionResult.insertId;
                             }
                             
-                            // Only add NEW images (existing ones are already in DB)
+                            // Only add NEW images
                             metadataArray.forEach((metadata, index) => {
                                 if (metadata && metadata.category === category && metadata.hotelIndex === hotelIndex) {
                                     if (roomImageFiles[index]) {
