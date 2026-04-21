@@ -133,9 +133,11 @@ router.post('/', async (req, res) => {
         const [flightResult] = await connection.query(`
             INSERT INTO offline_flights (
                 booking_type,
+                from_country,
                 from_city,
                 from_airport,
                 from_airport_code,
+                to_country,
                 to_city,
                 to_airport,
                 to_airport_code,
@@ -160,12 +162,14 @@ router.post('/', async (req, res) => {
                 total_amount,
                 created_at,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
             [
                 bookingType,
+                flightDetails.fromCountry,
                 flightDetails.fromCity,
                 flightDetails.fromAirport,
                 flightDetails.fromAirportCode,
+                flightDetails.toCountry,
                 flightDetails.toCity,
                 flightDetails.toAirport,
                 flightDetails.toAirportCode,
@@ -234,9 +238,11 @@ router.put('/:id', async (req, res) => {
         await connection.query(`
             UPDATE offline_flights SET
                 booking_type = ?,
+                from_country = ?,
                 from_city = ?,
                 from_airport = ?,
                 from_airport_code = ?,
+                to_country = ?,
                 to_city = ?,
                 to_airport = ?,
                 to_airport_code = ?,
@@ -263,9 +269,11 @@ router.put('/:id', async (req, res) => {
             WHERE id = ?`,
             [
                 bookingType,
+                flightDetails.fromCountry,
                 flightDetails.fromCity,
                 flightDetails.fromAirport,
                 flightDetails.fromAirportCode,
+                flightDetails.toCountry,
                 flightDetails.toCity,
                 flightDetails.toAirport,
                 flightDetails.toAirportCode,
