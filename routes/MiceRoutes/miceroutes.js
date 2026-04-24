@@ -158,6 +158,7 @@ const uploadVisaFile = multer({
 // Get all domestic mice cities
 router.get('/domestic', async (req, res) => {
   console.log('📥 GET /api/mice/domestic');
+  
   try {
     const [cities] = await db.query(`
       SELECT 
@@ -171,7 +172,32 @@ router.get('/domestic', async (req, res) => {
       LEFT JOIN tour_departures d ON d.mice_id = m.id
       ORDER BY m.created_at DESC
     `);
-    res.json(cities);
+
+    // Group by state_name
+    const groupedByState = cities.reduce((group, city) => {
+      const stateName = city.state_name;
+      if (!group[stateName]) {
+        group[stateName] = [];
+      }
+      
+      group[stateName].push({
+        id: city.id,
+        city_name: city.city_name,
+        image: city.image,
+        price: city.price,
+        emi_price: city.emi_price,
+        duration_days: city.duration_days,
+        start_date: city.start_date,
+        end_date: city.end_date,
+        created_at: city.created_at,
+        updated_at: city.updated_at
+      });
+      
+      return group;
+    }, {});
+
+    res.json(groupedByState);
+
   } catch (error) {
     console.error('Error fetching domestic mice cities:', error);
     res.status(500).json({ error: 'Error fetching domestic mice cities' });
@@ -183,13 +209,24 @@ router.get('/domestic/:id', async (req, res) => {
   console.log(`📥 GET /api/mice/domestic/${req.params.id}`);
   try {
     const { id } = req.params;
-    const [rows] = await db.query(
-      'SELECT * FROM mice_domestic_cities WHERE id = ?',
-      [id]
-    );
+    
+    const [rows] = await db.query(`
+      SELECT 
+        m.*,
+        t.emi_price,
+        t.duration_days,
+        d.start_date,
+        d.end_date
+      FROM mice_domestic_cities m
+      LEFT JOIN tours t ON t.mice_id = m.id
+      LEFT JOIN tour_departures d ON d.mice_id = m.id
+      WHERE m.id = ?
+    `, [id]);
+    
     if (rows.length === 0) {
       return res.status(404).json({ error: 'City not found' });
     }
+    
     res.json(rows[0]);
   } catch (error) {
     console.error('Error fetching domestic mice city:', error);
@@ -216,8 +253,6 @@ router.get('/domestic/city/:cityName', async (req, res) => {
   }
 });
 
-// Create domestic mice cities
-// In your backend routes file - Update the domestic POST endpoint
 
 router.post('/domestic', (req, res) => {
   console.log('📥 POST /api/mice/domestic');
@@ -490,7 +525,12 @@ router.get('/international', async (req, res) => {
     const [cities] = await db.query(`
       SELECT 
         m.id AS mice_id,
-        m.*,
+        m.country_name,
+        m.city_name,
+        m.image,
+        m.price,
+        m.created_at,
+        m.updated_at,
         t.emi_price,
         t.duration_days,
         d.start_date,
@@ -501,7 +541,31 @@ router.get('/international', async (req, res) => {
       ORDER BY m.created_at DESC
     `);
 
-    res.json(cities);
+    // Group by country_name (similar to domestic API)
+    const groupedByCountry = cities.reduce((group, city) => {
+      const countryName = city.country_name;
+      if (!group[countryName]) {
+        group[countryName] = [];
+      }
+      
+      group[countryName].push({
+        id: city.mice_id || city.id,
+        city_name: city.city_name,
+        image: city.image,
+        price: city.price,
+        emi_price: city.emi_price,
+        duration_days: city.duration_days,
+        start_date: city.start_date,
+        end_date: city.end_date,
+        created_at: city.created_at,
+        updated_at: city.updated_at
+      });
+      
+      return group;
+    }, {});
+
+    res.json(groupedByCountry);
+
   } catch (error) {
     console.error('Error fetching international mice cities:', error);
     res.status(500).json({ error: 'Error fetching international mice cities' });
@@ -513,10 +577,20 @@ router.get('/international/:id', async (req, res) => {
   console.log(`📥 GET /api/mice/international/${req.params.id}`);
   try {
     const { id } = req.params;
-    const [rows] = await db.query(
-      'SELECT * FROM mice_international_cities WHERE id = ?',
-      [id]
-    );
+    
+    const [rows] = await db.query(`
+      SELECT 
+        m.*,
+        t.emi_price,
+        t.duration_days,
+        d.start_date,
+        d.end_date
+      FROM mice_international_cities m
+      LEFT JOIN tours t ON t.mice_id = m.id
+      LEFT JOIN tour_departures d ON d.mice_id = m.id
+      WHERE m.id = ?
+    `, [id]);
+    
     if (rows.length === 0) {
       return res.status(404).json({ error: 'City not found' });
     }

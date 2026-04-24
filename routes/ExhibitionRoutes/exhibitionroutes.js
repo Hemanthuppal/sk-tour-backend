@@ -217,7 +217,17 @@ router.get('/domestic', async (req, res) => {
       exhibition.cities = cities || [];
     }
 
-    res.json(exhibitions);
+    // Group exhibitions by domestic_category_name
+    const groupedByCategory = exhibitions.reduce((group, exhibition) => {
+      const categoryName = exhibition.domestic_category_name;
+      if (!group[categoryName]) {
+        group[categoryName] = [];
+      }
+      group[categoryName].push(exhibition);
+      return group;
+    }, {});
+
+    res.json(groupedByCategory);
 
   } catch (error) {
     console.error(error);
@@ -542,13 +552,10 @@ router.delete('/domestic/:id', async (req, res) => {
     if (connection) connection.release();
   }
 });
-
-// ========== INTERNATIONAL EXHIBITION ROUTES ==========
 router.get('/international', async (req, res) => {
   console.log('📥 GET /international');
 
   try {
-    // ✅ 1. Get exhibitions + tour data (NO departures JOIN)
     const [exhibitions] = await db.query(`
       SELECT 
         e.*,
@@ -559,7 +566,6 @@ router.get('/international', async (req, res) => {
       ORDER BY e.created_at DESC
     `);
 
-    // ✅ 2. Loop each exhibition
     for (let exhibition of exhibitions) {
 
       // 👉 Get cities
@@ -578,7 +584,7 @@ router.get('/international', async (req, res) => {
 
       exhibition.cities = cities || [];
 
-      // 👉 Get FIRST departure (important fix)
+      // 👉 Get FIRST departure
       const [departures] = await db.query(
         `SELECT start_date, end_date
          FROM tour_departures
@@ -596,7 +602,17 @@ router.get('/international', async (req, res) => {
       }
     }
 
-    res.json(exhibitions);
+    // ✅ 3. Group by international_category_name
+    const groupedByCategory = exhibitions.reduce((group, exhibition) => {
+      const categoryName = exhibition.international_category_name;
+      if (!group[categoryName]) {
+        group[categoryName] = [];
+      }
+      group[categoryName].push(exhibition);
+      return group;
+    }, {});
+
+    res.json(groupedByCategory);
 
   } catch (error) {
     console.error('Error fetching international exhibitions:', error);
