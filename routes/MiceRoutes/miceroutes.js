@@ -2062,13 +2062,16 @@ router.post('/domestic-details/:id', async (req, res) => {
       return res.status(404).json({ error: `Mice city not found with ID: ${miceId}` });
     }
 
-    const cityName = miceCity[0].city_name;
 
     // Check if tour exists for this mice
     const [existingTour] = await connection.query(
       'SELECT * FROM tours WHERE mice_id = ?',
       [miceId]
     );
+
+       const miceTitle = details.mice_name && details.mice_name.trim() !== '' 
+      ? details.mice_name.trim() 
+      : miceCity[0].city_name;
 
     if (existingTour.length === 0) {
       // Create new tour
@@ -2082,7 +2085,7 @@ router.post('/domestic-details/:id', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           tourCode,
-          details.mice_name || cityName,
+          miceTitle,
           'mice',
           details.duration_days || 0,
           details.overview || null,
@@ -2101,6 +2104,14 @@ router.post('/domestic-details/:id', async (req, res) => {
       );
     } else {
       // Update existing tour
+
+       const existingTitle = existingTour[0].title;
+      const newTitle = details.mice_name && details.mice_name.trim() !== '' 
+        ? details.mice_name.trim() 
+        : existingTitle;  // Keep existing title if no new one provided
+      
+
+
       await connection.query(
         `UPDATE tours SET 
           title = ?, duration_days = ?, overview = ?,
@@ -2110,7 +2121,7 @@ router.post('/domestic-details/:id', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE mice_id = ?`,
         [
-          details.mice_name || cityName,
+           newTitle,
           details.duration_days || 0,
           details.overview || null,
           details.base_price_adult || 0,
@@ -2358,13 +2369,20 @@ router.post('/international-details/:id', async (req, res) => {
       return res.status(404).json({ error: `Mice city not found with ID: ${miceId}` });
     }
 
-    const cityName = miceCity[0].city_name;
 
     // Check if tour exists for this mice
     const [existingTour] = await connection.query(
       'SELECT * FROM tours WHERE mice_id = ?',
       [miceId]
     );
+
+
+      // Use the mice_name from the payload, NOT the city name
+    const miceTitle = details.mice_name && details.mice_name.trim() !== '' 
+      ? details.mice_name.trim() 
+      : miceCity[0].city_name;
+
+
 
     if (existingTour.length === 0) {
       const tourCode = `INTMICE${miceId}`;
@@ -2377,7 +2395,7 @@ router.post('/international-details/:id', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         [
           tourCode,
-          details.mice_name || cityName,
+          miceTitle,
           'mice',
           details.duration_days || 0,
           details.overview || null,
@@ -2395,6 +2413,14 @@ router.post('/international-details/:id', async (req, res) => {
         ]
       );
     } else {
+
+       // Update existing tour - preserve the existing title if no new title provided
+      const existingTitle = existingTour[0].title;
+      const newTitle = details.mice_name && details.mice_name.trim() !== '' 
+        ? details.mice_name.trim() 
+        : existingTitle;  // Keep existing title if no new one provided
+
+
       await connection.query(
         `UPDATE tours SET 
           title = ?, duration_days = ?, overview = ?,
@@ -2404,7 +2430,7 @@ router.post('/international-details/:id', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE mice_id = ?`,
         [
-          details.mice_name || cityName,
+          newTitle, 
           details.duration_days || 0,
           details.overview || null,
           details.base_price_adult || 0,

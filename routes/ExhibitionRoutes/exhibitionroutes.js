@@ -813,10 +813,27 @@ router.put('/domestic/:id', (req, res) => {
       const { domestic_category_name, stateNames, cityNames, prices, existingImages, existingCityIds } = req.body;
       const files = req.files || [];
       
-      if (!domestic_category_name || domestic_category_name.trim() === '') {
+      // Get the original exhibition to check the category name
+      const [originalExhibition] = await db.query(
+        'SELECT domestic_category_name FROM domestic_exhibition WHERE id = ?',
+        [id]
+      );
+      
+      let finalCategoryName = domestic_category_name;
+      
+      // If the original was "Plastics" and new is "Domestic Plastics", keep it as "Plastics"
+      if (originalExhibition.length > 0 && 
+          originalExhibition[0].domestic_category_name === "Plastics" && 
+          domestic_category_name === "Domestic Plastics") {
+        finalCategoryName = "Plastics";
+        console.log(`⚠️ Preserving original category name: "Plastics" instead of "Domestic Plastics"`);
+      }
+      
+      if (!finalCategoryName || finalCategoryName.trim() === '') {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
+      // Rest of your existing code...
       let stateNamesArray = [];
       let cityNamesArray = [];
       let pricesArray = [];
@@ -845,11 +862,13 @@ router.put('/domestic/:id', (req, res) => {
       connection = await db.getConnection();
       await connection.beginTransaction();
       
+      // Use the preserved category name
       await connection.query(
         'UPDATE domestic_exhibition SET domestic_category_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [domestic_category_name.trim(), id]
+        [finalCategoryName.trim(), id]
       );
       
+      // Rest of your code remains unchanged...
       const [oldCities] = await connection.query(
         'SELECT id, image FROM domestic_exhibition_cities WHERE domestic_exhibition_id = ?',
         [id]
@@ -864,14 +883,13 @@ router.put('/domestic/:id', (req, res) => {
         for (let i = 0; i < cityNamesArray.length; i++) {
           const stateName = stateNamesArray[i]?.trim();
           const cityName = cityNamesArray[i]?.trim();
-          const price = pricesArray[i]?.trim(); // Changed: accept string
+          const price = pricesArray[i]?.trim();
           
           if (!cityName) {
             await connection.rollback();
             return res.status(400).json({ error: 'City name cannot be empty' });
           }
           
-          // Changed: Only check if price exists and is not empty
           if (!price || price.toString().trim() === '') {
             await connection.rollback();
             return res.status(400).json({ error: 'Valid price is required for each city' });
@@ -1220,10 +1238,9 @@ router.post('/domestic/:id/details', async (req, res) => {
 
     if (exhibition.length === 0) {
       await connection.rollback();
-      return res.status(404).json({ 
-        error: `Exhibition not found with ID: ${exhibitionId}`
-      });
+      return res.status(404).json({ error: 'Exhibition not found' });
     }
+
 
     const [existingTour] = await connection.query(
       'SELECT * FROM tours WHERE exhibition_id = ?',
@@ -1241,7 +1258,7 @@ router.post('/domestic/:id/details', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           tourCode,
-          details.exhibition_name || exhibition[0].domestic_category_name,
+          details.exhibition_name || "",
           'exhibition',
           details.duration_days || 0,
           details.overview || null,
@@ -1268,7 +1285,7 @@ router.post('/domestic/:id/details', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE exhibition_id = ?`,
         [
-          details.exhibition_name || exhibition[0].domestic_category_name,
+          details.exhibition_name || "",
           details.duration_days || 0,
           details.overview || null,
           details.base_price_adult || 0,
@@ -1501,12 +1518,12 @@ router.post('/international/:id/details', async (req, res) => {
       [exhibitionId]
     );
 
-    if (exhibition.length === 0) {
+      if (exhibition.length === 0) {
       await connection.rollback();
-      return res.status(404).json({
-        error: `Exhibition not found with ID: ${exhibitionId}`
-      });
+      return res.status(404).json({ error: 'Exhibition not found' });
     }
+
+
 
     const [existingTour] = await connection.query(
       'SELECT * FROM tours WHERE exhibition_id = ?',
@@ -1526,7 +1543,7 @@ router.post('/international/:id/details', async (req, res) => {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           tourCode,
-          details.exhibition_name || exhibition[0].international_category_name,
+          details.exhibition_name || "",
           'exhibition',
           details.duration_days || 0,
           details.overview || null,
@@ -1555,7 +1572,7 @@ router.post('/international/:id/details', async (req, res) => {
           optional_tour_remarks = ?, updated_at = NOW()
         WHERE exhibition_id = ?`,
         [
-          details.exhibition_name || exhibition[0].international_category_name,
+          details.exhibition_name || "",
           details.duration_days || 0,
           details.overview || null,
           details.base_price_adult || 0,
@@ -2346,7 +2363,21 @@ router.put('/international/:id', (req, res) => {
       const { international_category_name, countryNames, cityNames, prices, existingImages, existingCityIds } = req.body;
       const files = req.files || [];
       
-      if (!international_category_name || international_category_name.trim() === '') {
+      // Get the original exhibition to check the category name
+      const [originalExhibition] = await db.query(
+        'SELECT international_category_name FROM international_exhibition WHERE id = ?',
+        [id]
+      );
+      
+      let finalCategoryName = international_category_name;
+      
+      // ALWAYS preserve the original category name for international exhibitions
+      if (originalExhibition.length > 0) {
+        finalCategoryName = originalExhibition[0].international_category_name;
+        console.log(`📌 Preserving original international category name: "${finalCategoryName}" (was trying to change to: "${international_category_name}")`);
+      }
+      
+      if (!finalCategoryName || finalCategoryName.trim() === '') {
         return res.status(400).json({ error: 'Category name is required' });
       }
       
@@ -2378,9 +2409,10 @@ router.put('/international/:id', (req, res) => {
       connection = await db.getConnection();
       await connection.beginTransaction();
       
+      // Use the preserved category name (original from database)
       await connection.query(
         'UPDATE international_exhibition SET international_category_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-        [international_category_name.trim(), id]
+        [finalCategoryName.trim(), id]
       );
       
       const [oldCities] = await connection.query(
@@ -2442,7 +2474,10 @@ router.put('/international/:id', (req, res) => {
       
       await connection.commit();
       
-      res.json({ message: 'International exhibition updated successfully' });
+      res.json({ 
+        message: 'International exhibition updated successfully',
+        preserved_category: finalCategoryName
+      });
     } catch (error) {
       if (connection) await connection.rollback();
       console.error('Error updating international exhibition:', error);
@@ -2462,6 +2497,8 @@ router.put('/international/:id', (req, res) => {
     }
   });
 });
+
+
 // ========== TOUR DATA ROUTE ==========
 router.get('/tour-data/:exhibition_id', async (req, res) => {
   const exhibitionId = req.params.exhibition_id;
