@@ -17,7 +17,7 @@ router.get('/tour/:tour_id', async (req, res) => {
 
 
 router.post('/', async (req, res) => {
-  const { tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed } = req.body;
+  const { tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active } = req.body;
 
   if (!tour_id || !pax) {
     return res.status(400).json({ message: "tour_id and pax are required" });
@@ -25,17 +25,17 @@ router.post('/', async (req, res) => {
 
   try {
     const [result] = await pool.query(
-      `INSERT INTO tour_costs (tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed]
+      `INSERT INTO tour_costs (tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active || 'option1']
     );
 
     res.status(201).json({ cost_id: result.insertId, message: "Cost added successfully" });
-
   } catch(err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 router.post('/bulk', async (req, res) => {
   const { tour_id, costs } = req.body;
@@ -50,7 +50,7 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    const values = costs.map((c, idx) => [
+    const values = costs.map((c) => [
       tour_id,
       Number(c.pax),
       c.standard_hotel ?? null,
@@ -58,12 +58,15 @@ router.post('/bulk', async (req, res) => {
       c.executive_hotel ?? null,
       c.child_with_bed ?? null,
       c.child_no_bed ?? null,
-      c.remarks ?? null
+      c.cost_remarks ?? null,
+      c.cost_remarks_option1 ?? null,
+      c.cost_remarks_option2 ?? null,
+      c.cost_remarks_active || 'option1'
     ]);
 
     await conn.query(
       `INSERT INTO tour_costs 
-        (tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, remarks)
+        (tour_id, pax, standard_hotel, deluxe_hotel, executive_hotel, child_with_bed, child_no_bed, cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active)
        VALUES ?`,
       [values]
     );
@@ -81,6 +84,8 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
+
 
 router.put('/:cost_id', async (req, res) => {
   try {

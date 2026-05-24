@@ -186,12 +186,12 @@ router.post('/', async (req, res) => {
 });
 
 // UPDATE
+// Update the PUT endpoint in tours.js
 router.put('/:id', async (req, res) => {
   const tourId = req.params.id;
   const updateData = req.body;
 
   try {
-    // Check if tour exists
     const [existingTour] = await pool.query(
       'SELECT tour_id FROM tours WHERE tour_id = ?',
       [tourId]
@@ -204,12 +204,21 @@ router.put('/:id', async (req, res) => {
     // List of allowed fields to update
     const allowedFields = [
       'title', 'tour_type', 'primary_destination_id', 'country_id', 'duration_days',
-      'overview', 'base_price_adult','emi_price', 'is_international', 'cost_remarks',
-      'hotel_remarks', 'transport_remarks', 'emi_remarks',
-      'booking_poi_remarks', 'cancellation_remarks', 'optional_tour_remarks'
+      'overview', 'base_price_adult', 'emi_price', 'is_international', 'status',
+      'cost_remarks', 'hotel_remarks', 'transport_remarks', 'emi_remarks',
+      'booking_poi_remarks', 'cancellation_remarks', 'optional_tour_remarks',
+      'departure_description', 'instruction_description',
+      'cost_remarks_active', 'hotel_remarks_active', 'transport_remarks_active',
+      'emi_remarks_active', 'booking_poi_remarks_active', 'cancellation_remarks_active',
+      'optional_tour_remarks_active', 'departure_description_active', 'instruction_description_active',
+      'cost_remarks_option1', 'cost_remarks_option2', 'hotel_remarks_option1', 'hotel_remarks_option2',
+      'transport_remarks_option1', 'transport_remarks_option2', 'emi_remarks_option1', 'emi_remarks_option2',
+      'booking_poi_remarks_option1', 'booking_poi_remarks_option2', 'cancellation_remarks_option1',
+      'cancellation_remarks_option2', 'optional_tour_remarks_option1', 'optional_tour_remarks_option2',
+      'departure_description_option1', 'departure_description_option2',
+      'instruction_description_option1', 'instruction_description_option2'
     ];
 
-    // Filter and prepare update data
     const filteredData = {};
     for (const field of allowedFields) {
       if (updateData[field] !== undefined) {
@@ -217,7 +226,6 @@ router.put('/:id', async (req, res) => {
       }
     }
 
-    // Add updated_at timestamp
     filteredData.updated_at = new Date();
 
     console.log('Updating tour:', tourId, 'with data:', filteredData);
@@ -620,6 +628,9 @@ router.get('/tour/full/all-festival', async (req, res) => {
 });
 
 // ==================== EXISTING ROUTES (unchanged) ====================
+// In tours.js - Replace the GET /tour/full/individual/:tour_id endpoint
+
+// GET single tour with full details for INDIVIDUAL - FIXED to fetch remarks from child tables
 router.get('/tour/full/individual/:tour_id', async (req, res) => {
   const tourId = req.params.tour_id;
 
@@ -631,7 +642,7 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
       SELECT t.*, d.name as primary_destination_name
       FROM tours t
       LEFT JOIN destinations d ON t.primary_destination_id = d.destination_id
-      WHERE t.tour_id = ? AND t.tour_type = 'Individual'
+      WHERE t.tour_id = ? AND t.tour_type = 'individual'
     `, [tourId]);
 
     if (tourRows.length === 0) {
@@ -641,7 +652,17 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     response.basic_details = tourRows[0];
 
     // 2️⃣ DEPARTURES
-    const [departures] = await pool.query(`SELECT * FROM tour_departures WHERE tour_id = ?`, [tourId]);
+       const [departures] = await pool.query(`
+      SELECT departure_id, tour_id, description, description_option1, description_option2, description_active,
+             departure_text, start_date, end_date, departure_date, return_date,
+             status, adult_price, child_price, infant_price, total_seats, booked_seats,
+             three_star_twin, three_star_triple, three_star_child_with_bed, three_star_child_without_bed,
+             three_star_infant, three_star_single, four_star_twin, four_star_triple,
+             four_star_child_with_bed, four_star_child_without_bed, four_star_infant, four_star_single,
+             five_star_twin, five_star_triple, five_star_child_with_bed, five_star_child_without_bed,
+             five_star_infant, five_star_single
+      FROM tour_departures WHERE tour_id = ? ORDER BY departure_id
+    `, [tourId]);
     response.departures = departures;
 
     // 3️⃣ IMAGES
@@ -657,7 +678,7 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     response.exclusions = exclusions;
 
     // 6️⃣ ITINERARY
-    const [itinerary] = await pool.query(`SELECT * FROM tour_itineraries WHERE tour_id = ?`, [tourId]);
+    const [itinerary] = await pool.query(`SELECT * FROM tour_itineraries WHERE tour_id = ? ORDER BY day`, [tourId]);
     response.itinerary = itinerary;
 
     // 7️⃣ COSTS
@@ -672,9 +693,28 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
     response.transport = transport;
 
-    // ========================
-    // VISA DATA
-    // ========================
+    // 🔟 BOOKING POI
+     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
+    response.booking_poi = poi;
+
+
+    // 1️⃣1️⃣ CANCELLATION
+      const [cancellation] = await pool.query(`SELECT * FROM tour_cancellation_policies WHERE tour_id = ?`, [tourId]);
+    response.cancellation_policies = cancellation;
+
+    // 1️⃣2️⃣ INSTRUCTIONS
+      const [instructions] = await pool.query(`SELECT * FROM tour_instructions WHERE tour_id = ?`, [tourId]);
+    response.instructions = instructions;
+
+    // 1️⃣3️⃣ OPTIONAL TOURS - FIXED: Include optional_remarks
+      const [optionalTours] = await pool.query(`SELECT * FROM optional_tours WHERE tour_id = ?`, [tourId]);
+    response.optional_tours = optionalTours;
+
+    // 1️⃣4️⃣ EMI OPTIONS - FIXED: Include emi_remarks
+    const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ? ORDER BY months`, [tourId]);
+    response.emi_options = emi;
+
+    // 1️⃣5️⃣ VISA DATA - PRESERVED
     const [
       visaDetails,
       visaForms,
@@ -700,34 +740,15 @@ router.get('/tour/full/individual/:tour_id', async (req, res) => {
     }));
     response.visa_forms = processedVisaForms;
 
-    // 🔟 BOOKING POI
-    const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);
-    response.booking_poi = poi;
-
-    // 1️⃣1️⃣ CANCELLATION
-    const [cancellation] = await pool.query(`SELECT * FROM tour_cancellation_policies WHERE tour_id = ?`, [tourId]);
-    response.cancellation_policies = cancellation;
-
-    // 1️⃣2️⃣ INSTRUCTIONS
-    const [instructions] = await pool.query(`SELECT * FROM tour_instructions WHERE tour_id = ?`, [tourId]);
-    response.instructions = instructions;
-
-    // 1️⃣3️⃣ OPTIONAL TOURS
-    const [optionalTours] = await pool.query(`SELECT * FROM optional_tours WHERE tour_id = ?`, [tourId]);
-    response.optional_tours = optionalTours;
-
-    // 1️⃣4️⃣ EMI OPTIONS
-    const [emi] = await pool.query(`SELECT * FROM emi_options WHERE tour_id = ?`, [tourId]);
-    response.emi_options = emi;
-
     res.json({ 
       success: true, 
-      tour_type: 'Individual', 
+      tour_type: 'individual', 
       tour_id: tourId, 
       ...response 
     });
 
   } catch (err) {
+    console.error('Error loading tour:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });

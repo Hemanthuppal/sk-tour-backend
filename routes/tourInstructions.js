@@ -6,37 +6,39 @@ const pool = require('../config/db');
 router.get('/tour/:tour_id', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT instruction_id, item, sort_order
+      `SELECT instruction_id, item, item_option1, item_option2, item_active, sort_order
        FROM tour_instructions
        WHERE tour_id = ?
        ORDER BY sort_order ASC, instruction_id ASC`,
       [req.params.tour_id]
     );
 
-    const instructions = rows.map(r => r.item);
     res.json({
       tour_id: parseInt(req.params.tour_id),
       count: rows.length,
-      instructions_list: instructions
+      instructions: rows
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
+
 // CREATE single instruction
 router.post('/', async (req, res) => {
-  const { tour_id, item, sort_order } = req.body;
+  const { tour_id, item, item_option1, item_option2, item_active, sort_order } = req.body;
 
-  if (!tour_id || !item) {
-    return res.status(400).json({ message: 'tour_id and item are required' });
+  if (!tour_id) {
+    return res.status(400).json({ message: 'tour_id is required' });
   }
 
   try {
+    const activeItem = item_active === 'option2' ? (item_option2 || item) : (item_option1 || item);
+    
     const [result] = await pool.query(
-      `INSERT INTO tour_instructions (tour_id, item, sort_order)
-       VALUES (?, ?, ?)`,
-      [tour_id, item.trim(), sort_order || 1]
+      `INSERT INTO tour_instructions (tour_id, item, item_option1, item_option2, item_active, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [tour_id, activeItem, item_option1 || null, item_option2 || null, item_active || 'option1', sort_order || 1]
     );
 
     res.status(201).json({
@@ -48,18 +50,24 @@ router.post('/', async (req, res) => {
   }
 });
 
+
+
 // UPDATE instruction
 router.put('/:id', async (req, res) => {
-  const { item, sort_order } = req.body;
+  const { item, item_option1, item_option2, item_active, sort_order } = req.body;
 
-  if (!item && sort_order == null) {
+  if (!item && !item_option1 && !item_option2 && sort_order == null) {
     return res.status(400).json({ message: 'Nothing to update' });
   }
 
   try {
+    const activeItem = item_active === 'option2' ? (item_option2 || item) : (item_option1 || item);
+    
     const [result] = await pool.query(
-      `UPDATE tour_instructions SET ? WHERE instruction_id = ?`,
-      [req.body, req.params.id]
+      `UPDATE tour_instructions 
+       SET item = ?, item_option1 = ?, item_option2 = ?, item_active = ?, sort_order = ?
+       WHERE instruction_id = ?`,
+      [activeItem, item_option1 || null, item_option2 || null, item_active || 'option1', sort_order, req.params.id]
     );
 
     if (result.affectedRows === 0)
@@ -70,6 +78,8 @@ router.put('/:id', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+
 
 // DELETE instruction
 router.delete('/:id', async (req, res) => {
@@ -110,14 +120,33 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    const values = items.map((text, idx) => [
-      tour_id,
-      String(text).trim(),
-      idx + 1
-    ]);
+    const values = items.map((text, idx) => {
+      let itemText, itemOpt1, itemOpt2, itemActive;
+      
+      if (typeof text === 'object') {
+        itemOpt1 = text.item_option1 || null;
+        itemOpt2 = text.item_option2 || null;
+        itemActive = text.item_active || 'option1';
+        itemText = itemActive === 'option2' ? (itemOpt2 || text.item) : (itemOpt1 || text.item);
+      } else {
+        itemText = String(text).trim();
+        itemOpt1 = itemText;
+        itemOpt2 = null;
+        itemActive = 'option1';
+      }
+      
+      return [
+        tour_id,
+        itemText,
+        itemOpt1,
+        itemOpt2,
+        itemActive,
+        idx + 1
+      ];
+    });
 
     await conn.query(
-      `INSERT INTO tour_instructions (tour_id, item, sort_order)
+      `INSERT INTO tour_instructions (tour_id, item, item_option1, item_option2, item_active, sort_order)
        VALUES ?`,
       [values]
     );
@@ -135,6 +164,7 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 
 // DELETE ALL instructions for a tour

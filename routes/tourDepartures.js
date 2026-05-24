@@ -35,6 +35,9 @@ router.post('/', async (req, res) => {
       tour_id,
       tour_type = 'Group',
       description = null,
+      description_option1 = null,
+      description_option2 = null,
+      description_active = 'option1',
       departure_text = null,
       start_date = null,
       end_date = null,
@@ -46,21 +49,18 @@ router.post('/', async (req, res) => {
       infant_price = null,
       total_seats = 40,
       booked_seats = 0,
-      // 3 Star prices
       three_star_twin = null,
       three_star_triple = null,
       three_star_child_with_bed = null,
       three_star_child_without_bed = null,
       three_star_infant = null,
       three_star_single = null,
-      // 4 Star prices
       four_star_twin = null,
       four_star_triple = null,
       four_star_child_with_bed = null,
       four_star_child_without_bed = null,
       four_star_infant = null,
       four_star_single = null,
-      // 5 Star prices
       five_star_twin = null,
       five_star_triple = null,
       five_star_child_with_bed = null,
@@ -76,24 +76,10 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // For Group tours, validate start_date
-    if (tour_type === 'Group' && !start_date) {
-      return res.status(400).json({ 
-        error: 'start_date is required for Group tours' 
-      });
-    }
-
-    // For Individual tours, validate departure_text
-    if (tour_type === 'Individual' && !departure_text) {
-      return res.status(400).json({ 
-        error: 'departure_text is required for Individual tours' 
-      });
-    }
-
     const query = `
       INSERT INTO tour_departures (
-        tour_id, tour_type, description, departure_text,
-        start_date, end_date, departure_date, return_date,
+        tour_id, tour_type, description, description_option1, description_option2, description_active,
+        departure_text, start_date, end_date, departure_date, return_date,
         status, adult_price, child_price, infant_price,
         total_seats, booked_seats,
         three_star_twin, three_star_triple, 
@@ -105,45 +91,26 @@ router.post('/', async (req, res) => {
         five_star_twin, five_star_triple,
         five_star_child_with_bed, five_star_child_without_bed,
         five_star_infant, five_star_single
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
-      tour_id, 
-      tour_type, 
-      description, 
-      departure_text,
-      start_date, 
-      end_date, 
-      departure_date, 
-      return_date,
-      status, 
-      adult_price, 
-      child_price, 
-      infant_price,
-      total_seats, 
-      booked_seats,
-      three_star_twin, 
-      three_star_triple,
-      three_star_child_with_bed, 
-      three_star_child_without_bed,
-      three_star_infant, 
-      three_star_single,
-      four_star_twin, 
-      four_star_triple,
-      four_star_child_with_bed, 
-      four_star_child_without_bed,
-      four_star_infant, 
-      four_star_single,
-      five_star_twin, 
-      five_star_triple,
-      five_star_child_with_bed, 
-      five_star_child_without_bed,
-      five_star_infant, 
-      five_star_single
+      tour_id, tour_type, description, description_option1, description_option2, description_active,
+      departure_text, start_date, end_date, departure_date, return_date,
+      status, adult_price, child_price, infant_price,
+      total_seats, booked_seats,
+      three_star_twin, three_star_triple,
+      three_star_child_with_bed, three_star_child_without_bed,
+      three_star_infant, three_star_single,
+      four_star_twin, four_star_triple,
+      four_star_child_with_bed, four_star_child_without_bed,
+      four_star_infant, four_star_single,
+      five_star_twin, five_star_triple,
+      five_star_child_with_bed, five_star_child_without_bed,
+      five_star_infant, five_star_single
     ];
 
-    console.log('Creating departure:', { tour_id, tour_type, start_date, departure_text });
+    console.log('Creating departure:', { tour_id, tour_type });
 
     const [result] = await conn.query(query, values);
     await conn.commit();
@@ -181,59 +148,49 @@ router.post('/bulk', async (req, res) => {
     const values = departures.map(dep => {
       const isIndividual = dep.tour_type === 'Individual';
       
-      // For Group tours, use start_date as departure_date if not provided
       const effectiveDepartureDate = isIndividual 
         ? dep.departure_date 
         : (dep.departure_date || dep.start_date);
       
-      // For Group tours, use end_date as return_date if not provided
       const effectiveReturnDate = isIndividual 
         ? dep.return_date 
         : (dep.return_date || dep.end_date);
 
+      // Get the description based on active option
+      const activeDesc = dep.description_active === 'option2' 
+        ? (dep.description_option2 || dep.description)
+        : (dep.description_option1 || dep.description);
+      
       return [
         tour_id,
         dep.tour_type || 'Group',
-
-        // Description (Group only) - Fixed
-        isIndividual ? null : (dep.description || null),
-
-        // departure_text (Individual only) - Fixed
+        activeDesc,
+        dep.description_option1 || null,
+        dep.description_option2 || null,
+        dep.description_active || 'option1',
         isIndividual ? (dep.departure_text || null) : null,
-
-        // Dates
         dep.start_date || null,
         dep.end_date || null,
         effectiveDepartureDate,
         effectiveReturnDate,
-
-        // Pricing & status
         dep.status || 'Available',
         dep.adult_price || null,
         dep.child_price || null,
         dep.infant_price || null,
-
-        // Seats - default to 40 for Group, 0 for Individual
         dep.total_seats || (isIndividual ? 0 : 40),
         dep.booked_seats || 0,
-
-        // 3 Star prices
         dep.three_star_twin || null,
         dep.three_star_triple || null,
         dep.three_star_child_with_bed || null,
         dep.three_star_child_without_bed || null,
         dep.three_star_infant || null,
         dep.three_star_single || null,
-
-        // 4 Star prices
         dep.four_star_twin || null,
         dep.four_star_triple || null,
         dep.four_star_child_with_bed || null,
         dep.four_star_child_without_bed || null,
         dep.four_star_infant || null,
         dep.four_star_single || null,
-
-        // 5 Star prices
         dep.five_star_twin || null,
         dep.five_star_triple || null,
         dep.five_star_child_with_bed || null,
@@ -247,8 +204,8 @@ router.post('/bulk', async (req, res) => {
 
     const query = `
       INSERT INTO tour_departures (
-        tour_id, tour_type, description, departure_text,
-        start_date, end_date, departure_date, return_date,
+        tour_id, tour_type, description, description_option1, description_option2, description_active,
+        departure_text, start_date, end_date, departure_date, return_date,
         status, adult_price, child_price, infant_price,
         total_seats, booked_seats,
         three_star_twin, three_star_triple, 
@@ -283,13 +240,13 @@ router.post('/bulk', async (req, res) => {
   }
 });
 
+
 // UPDATE departure - ENHANCED with validation
 router.put('/:id', async (req, res) => {
   try {
     const departureId = req.params.id;
     const updateData = req.body;
     
-    // Check if departure exists
     const [existing] = await pool.query(
       'SELECT * FROM tour_departures WHERE departure_id = ?',
       [departureId]
@@ -299,22 +256,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: "Departure not found" });
     }
     
-    // Add updated_at timestamp
     updateData.updated_at = new Date();
-    
-    // Validate Group tour requirements
-    if (updateData.tour_type === 'Group' && !updateData.start_date) {
-      return res.status(400).json({ 
-        error: 'start_date is required for Group tours' 
-      });
-    }
-    
-    // Validate Individual tour requirements
-    if (updateData.tour_type === 'Individual' && !updateData.departure_text) {
-      return res.status(400).json({ 
-        error: 'departure_text is required for Individual tours' 
-      });
-    }
     
     const [result] = await pool.query(
       'UPDATE tour_departures SET ? WHERE departure_id = ?', 

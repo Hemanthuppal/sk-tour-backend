@@ -5,17 +5,16 @@ const pool = require('../config/db');
 router.get('/tour/:tour_id', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT hotel_id, tour_id, city, nights, remarks, 
+      `SELECT hotel_id, tour_id, city, nights, 
               standard_hotel_name, deluxe_hotel_name, executive_hotel_name,
+              hotel_remarks, hotel_remarks_option1, hotel_remarks_option2, hotel_remarks_active,
               created_at 
        FROM tour_hotels 
        WHERE tour_id = ? 
        ORDER BY hotel_id ASC`,
       [req.params.tour_id]
     );
-
     res.json(rows);
-
   } catch(err) {
     console.error('Error fetching hotels:', err);
     res.status(500).json({ error: err.message });
@@ -24,7 +23,7 @@ router.get('/tour/:tour_id', async (req, res) => {
 
 
 router.post('/', async (req, res) => {
-  const { tour_id, city, hotel_name, room_type, nights } = req.body;
+  const { tour_id, city, hotel_name, room_type, nights, hotel_remarks } = req.body;
 
   if (!tour_id || !city || !hotel_name || !room_type || !nights) {
     return res.status(400).json({ message: "All fields are required" });
@@ -32,13 +31,12 @@ router.post('/', async (req, res) => {
 
   try {
     const [result] = await pool.query(
-      `INSERT INTO tour_hotels (tour_id, city, hotel_name, room_type, nights)
-       VALUES (?, ?, ?, ?, ?)`,
-      [tour_id, city, hotel_name, room_type, nights]
+      `INSERT INTO tour_hotels (tour_id, city, hotel_name, room_type, nights, hotel_remarks)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [tour_id, city, hotel_name, room_type, nights, hotel_remarks || null]
     );
 
     res.status(201).json({ message: "Hotel added", hotel_id: result.insertId });
-
   } catch(err) {
     res.status(500).json({ error: err.message });
   }
@@ -71,7 +69,7 @@ router.delete('/:hotel_id', async (req, res) => {
 });
 
 router.post('/bulk', async (req, res) => {
-  const { tour_id, hotels } = req.body;
+  const { tour_id, hotels, hotel_remarks, hotel_remarks_option1, hotel_remarks_option2, hotel_remarks_active } = req.body;
 
   if (!tour_id || !Array.isArray(hotels) || hotels.length === 0) {
     return res.status(400).json({ message: 'tour_id and hotels are required' });
@@ -81,21 +79,23 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    // Map hotel data to match the exact column order in your table
     const values = hotels.map((h) => [
       tour_id,
       h.city || '',
       h.nights ? Number(h.nights) : null,
-      h.standard_hotel_name || null,  // Column 4 in your table
-      h.deluxe_hotel_name || null,    // Column 5
-      h.executive_hotel_name || null   // Column 6
-      // Note: 'remarks' column doesn't exist in your table schema
+      h.standard_hotel_name || null,
+      h.deluxe_hotel_name || null,
+      h.executive_hotel_name || null,
+      h.hotel_remarks || hotel_remarks || null,
+      h.hotel_remarks_option1 || hotel_remarks_option1 || null,
+      h.hotel_remarks_option2 || hotel_remarks_option2 || null,
+      h.hotel_remarks_active || hotel_remarks_active || 'option1'
     ]);
 
-    // Updated INSERT query matching your table columns
     await conn.query(
       `INSERT INTO tour_hotels 
-       (tour_id, city, nights, standard_hotel_name, deluxe_hotel_name, executive_hotel_name)
+       (tour_id, city, nights, standard_hotel_name, deluxe_hotel_name, executive_hotel_name,
+        hotel_remarks, hotel_remarks_option1, hotel_remarks_option2, hotel_remarks_active)
        VALUES ?`,
       [values]
     );
@@ -117,6 +117,7 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 // DELETE ALL hotels for a tour
 router.delete('/tour/:tour_id', async (req, res) => {

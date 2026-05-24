@@ -36,22 +36,26 @@ router.get('/:id', async (req, res) => {
 // POST create single optional tour
 router.post('/', async (req, res) => {
   try {
-    const { tour_id, tour_name, adult_price, child_price } = req.body;
+    const { tour_id, tour_name, adult_price, child_price, optional_remarks, optional_remarks_option1, optional_remarks_option2, optional_remarks_active } = req.body;
     
     if (!tour_id || !tour_name) {
       return res.status(400).json({ error: 'Tour ID and tour name are required' });
     }
     
     const query = `
-      INSERT INTO optional_tours (tour_id, tour_name, adult_price, child_price)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO optional_tours (tour_id, tour_name, adult_price, child_price, optional_remarks, optional_remarks_option1, optional_remarks_option2, optional_remarks_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const [result] = await db.execute(query, [
       tour_id,
       tour_name,
       adult_price || null,
-      child_price || null
+      child_price || null,
+      optional_remarks || null,
+      optional_remarks_option1 || null,
+      optional_remarks_option2 || null,
+      optional_remarks_active || 'option1'
     ]);
     
     res.status(201).json({
@@ -64,6 +68,7 @@ router.post('/', async (req, res) => {
   }
 });
 
+
 // POST bulk create optional tours
 router.post('/bulk', async (req, res) => {
   try {
@@ -73,23 +78,25 @@ router.post('/bulk', async (req, res) => {
       return res.status(400).json({ error: 'Tour ID and optional_tours array are required' });
     }
     
-    // Validate each tour
     for (const tour of optional_tours) {
       if (!tour.tour_name) {
         return res.status(400).json({ error: 'Tour name is required for all optional tours' });
       }
     }
     
-    // Prepare bulk insert
     const values = optional_tours.map(tour => [
       tour_id,
       tour.tour_name,
       tour.adult_price || null,
-      tour.child_price || null
+      tour.child_price || null,
+      tour.optional_remarks || null,
+      tour.optional_remarks_option1 || null,
+      tour.optional_remarks_option2 || null,
+      tour.optional_remarks_active || 'option1'
     ]);
     
     const query = `
-      INSERT INTO optional_tours (tour_id, tour_name, adult_price, child_price)
+      INSERT INTO optional_tours (tour_id, tour_name, adult_price, child_price, optional_remarks, optional_remarks_option1, optional_remarks_option2, optional_remarks_active)
       VALUES ?
     `;
     
@@ -105,11 +112,12 @@ router.post('/bulk', async (req, res) => {
   }
 });
 
+
 // PUT update optional tour
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { tour_name, adult_price, child_price } = req.body;
+    const { tour_name, adult_price, child_price, optional_remarks, optional_remarks_option1, optional_remarks_option2, optional_remarks_active } = req.body;
     
     if (!tour_name) {
       return res.status(400).json({ error: 'Tour name is required' });
@@ -117,7 +125,7 @@ router.put('/:id', async (req, res) => {
     
     const query = `
       UPDATE optional_tours 
-      SET tour_name = ?, adult_price = ?, child_price = ?, updated_at = CURRENT_TIMESTAMP
+      SET tour_name = ?, adult_price = ?, child_price = ?, optional_remarks = ?, optional_remarks_option1 = ?, optional_remarks_option2 = ?, optional_remarks_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE optional_tour_id = ?
     `;
     
@@ -125,6 +133,10 @@ router.put('/:id', async (req, res) => {
       tour_name,
       adult_price || null,
       child_price || null,
+      optional_remarks || null,
+      optional_remarks_option1 || null,
+      optional_remarks_option2 || null,
+      optional_remarks_active || 'option1',
       id
     ]);
     

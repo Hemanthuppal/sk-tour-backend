@@ -46,7 +46,11 @@ router.post('/', async (req, res) => {
     to_date,
     to_time,
     via,
-    sort_order
+    sort_order,
+    flight_remarks,
+    flight_remarks_option1,
+    flight_remarks_option2,
+    flight_remarks_active
   } = req.body;
 
   if (!tour_id || !from_city || !to_city) {
@@ -57,8 +61,8 @@ router.post('/', async (req, res) => {
     const [result] = await pool.query(
       `INSERT INTO tour_transports
         (tour_id, description, airline, flight_no, from_city, from_date, from_time,
-         to_city, to_date, to_time, via, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         to_city, to_date, to_time, via, sort_order, flight_remarks, flight_remarks_option1, flight_remarks_option2, flight_remarks_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_id,
         description || null,
@@ -71,7 +75,11 @@ router.post('/', async (req, res) => {
         to_date || null,
         to_time || null,
         via || null,
-        sort_order || 1
+        sort_order || 1,
+        flight_remarks || null,
+        flight_remarks_option1 || null,
+        flight_remarks_option2 || null,
+        flight_remarks_active || 'option1'
       ]
     );
 
@@ -83,6 +91,7 @@ router.post('/', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 // UPDATE transport segment
 router.put('/:id', async (req, res) => {
@@ -119,7 +128,7 @@ router.delete('/:id', async (req, res) => {
 
 // BULK CREATE transport segments
 router.post('/bulk', async (req, res) => {
-  const { tour_id, items } = req.body;
+  const { tour_id, items, flight_remarks, flight_remarks_option1, flight_remarks_option2, flight_remarks_active } = req.body;
 
   if (!tour_id || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'tour_id and items[] are required' });
@@ -129,10 +138,8 @@ router.post('/bulk', async (req, res) => {
   await conn.beginTransaction();
 
   try {
-    // First, delete existing transport for this tour
     await conn.query(`DELETE FROM tour_transports WHERE tour_id = ?`, [tour_id]);
 
-    // Prepare values for insertion
     const values = items.map((t, i) => [
       tour_id,
       t.description || null,
@@ -145,15 +152,18 @@ router.post('/bulk', async (req, res) => {
       t.to_date || null,
       t.to_time || null,
       t.via || null,
-      t.sort_order || i + 1
+      t.sort_order || i + 1,
+      t.flight_remarks || flight_remarks || null,
+      t.flight_remarks_option1 || flight_remarks_option1 || null,
+      t.flight_remarks_option2 || flight_remarks_option2 || null,
+      t.flight_remarks_active || flight_remarks_active || 'option1'
     ]);
 
-    // Insert new transport items
     if (values.length > 0) {
       await conn.query(
         `INSERT INTO tour_transports
         (tour_id, description, airline, flight_no, from_city, from_date, from_time,
-         to_city, to_date, to_time, via, sort_order)
+         to_city, to_date, to_time, via, sort_order, flight_remarks, flight_remarks_option1, flight_remarks_option2, flight_remarks_active)
          VALUES ?`,
         [values]
       );

@@ -19,7 +19,7 @@ router.get('/tour/:tour_id', async (req, res) => {
 
 // CREATE single policy
 router.post('/', async (req, res) => {
-  const { tour_id, days_min, days_max, charge_percentage, description, sort_order } = req.body;
+  const { tour_id, days_min, days_max, charge_percentage, description, sort_order, cancellation_remarks, cancellation_remarks_option1, cancellation_remarks_option2, cancellation_remarks_active } = req.body;
 
   if (!tour_id || charge_percentage == null) {
     return res.status(400).json({ message: 'tour_id and charge_percentage are required' });
@@ -28,15 +28,19 @@ router.post('/', async (req, res) => {
   try {
     const [result] = await pool.query(
       `INSERT INTO tour_cancellation_policies
-        (tour_id, days_min, days_max, charge_percentage, description, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+        (tour_id, days_min, days_max, charge_percentage, description, sort_order, cancellation_remarks, cancellation_remarks_option1, cancellation_remarks_option2, cancellation_remarks_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tour_id,
         days_min ?? null,
         days_max ?? null,
         charge_percentage,
         description || null,
-        sort_order || 1
+        sort_order || 1,
+        cancellation_remarks || null,
+        cancellation_remarks_option1 || null,
+        cancellation_remarks_option2 || null,
+        cancellation_remarks_active || 'option1'
       ]
     );
 
@@ -96,7 +100,7 @@ router.delete('/tour/:tour_id', async (req, res) => {
 });
 
 router.post('/bulk', async (req, res) => {
-  const { tour_id, policies } = req.body;
+  const { tour_id, policies, cancellation_remarks, cancellation_remarks_option1, cancellation_remarks_option2, cancellation_remarks_active } = req.body;
 
   if (!tour_id || !Array.isArray(policies) || policies.length === 0) {
     return res.status(400).json({ message: 'tour_id and policies[] are required' });
@@ -109,15 +113,17 @@ router.post('/bulk', async (req, res) => {
     const values = policies.map((p, idx) => [
       tour_id,
       p.cancellation_policy || null,
-      idx + 1,                 // sort_order
-      p.charges || null
+      idx + 1,
+      p.charges || null,
+      p.cancellation_remarks || cancellation_remarks || null,
+      p.cancellation_remarks_option1 || cancellation_remarks_option1 || null,
+      p.cancellation_remarks_option2 || cancellation_remarks_option2 || null,
+      p.cancellation_remarks_active || cancellation_remarks_active || 'option1'
     ]);
-
-    console.log("values", values);
 
     await conn.query(
       `INSERT INTO tour_cancellation_policies
-       (tour_id, cancellation_policy, sort_order, charges)
+       (tour_id, cancellation_policy, sort_order, charges, cancellation_remarks, cancellation_remarks_option1, cancellation_remarks_option2, cancellation_remarks_active)
        VALUES ?`,
       [values]
     );
@@ -128,7 +134,6 @@ router.post('/bulk', async (req, res) => {
       tour_id,
       added_count: policies.length
     });
-
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });

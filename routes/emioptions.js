@@ -1,6 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const pool = require('../config/db');
+
+// EMI calculation function
+const calculateEMI = (loanAmount, months, interestRate = 18) => {
+  const principal = parseFloat(loanAmount);
+  const monthlyRate = (interestRate / 100) / 12;
+  const n = parseInt(months, 10);
+  
+  if (isNaN(principal) || principal <= 0 || isNaN(n) || n <= 0) return 0;
+  
+  const emi = principal * monthlyRate * Math.pow(1 + monthlyRate, n) / 
+              (Math.pow(1 + monthlyRate, n) - 1);
+  
+  return Math.round(emi * 100) / 100;
+};
 
 // GET all EMI options for a specific tour
 router.get('/tour/:tour_id', async (req, res) => {
@@ -36,7 +51,7 @@ router.get('/:id', async (req, res) => {
 // POST create single EMI option
 router.post('/', async (req, res) => {
   try {
-    const { tour_id, loan_amount, particulars, months, emi } = req.body;
+    const { tour_id, loan_amount, particulars, months, emi, emi_remarks, emi_remarks_option1, emi_remarks_option2, emi_remarks_active } = req.body;
     
     if (!tour_id || !loan_amount || !particulars || !months || emi === undefined) {
       return res.status(400).json({ 
@@ -45,8 +60,8 @@ router.post('/', async (req, res) => {
     }
     
     const query = `
-      INSERT INTO emi_options (tour_id, loan_amount, particulars, months, emi)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO emi_options (tour_id, loan_amount, particulars, months, emi, emi_remarks, emi_remarks_option1, emi_remarks_option2, emi_remarks_active)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     
     const [result] = await db.execute(query, [
@@ -54,7 +69,11 @@ router.post('/', async (req, res) => {
       loan_amount,
       particulars,
       months,
-      emi
+      emi,
+      emi_remarks || null,
+      emi_remarks_option1 || null,
+      emi_remarks_option2 || null,
+      emi_remarks_active || 'option1'
     ]);
     
     res.status(201).json({
@@ -67,141 +86,94 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Add this calculation function at the top of the file
-const calculateEMI = (loanAmount, months, interestRate = 18) => {
-  // EMI formula: P * r * (1+r)^n / ((1+r)^n - 1)
-  // Where P = principal, r = monthly interest rate, n = number of months
-  const principal = parseFloat(loanAmount);
-  const monthlyRate = (interestRate / 100) / 12;
-  const n = parseInt(months, 10);
-  
-  if (principal <= 0 || n <= 0) return 0;
-  
-  const emi = principal * monthlyRate * Math.pow(1 + monthlyRate, n) / 
-              (Math.pow(1 + monthlyRate, n) - 1);
-  
-  return Math.round(emi * 100) / 100; // Round to 2 decimal places
-};
 
-// Update the bulk create route to calculate EMI automatically
+// BULK CREATE EMI options
 router.post('/emi/bulk', async (req, res) => {
+  const { tour_id, loan_amount, emi_options, emi_remarks, emi_remarks_option1, emi_remarks_option2, emi_remarks_active } = req.body;
+
+  if (!tour_id) {
+    return res.status(400).json({ error: 'tour_id is required' });
+  }
+
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+
   try {
-    const { tour_id, emi_options, loan_amount: fixedLoanAmount } = req.body;
+    // First delete existing EMI options
+    await conn.query('DELETE FROM emi_options WHERE tour_id = ?', [tour_id]);
+
+    let values = [];
     
-    console.log('=== EMI BULK INSERT REQUEST ===');
-    console.log('Tour ID:', tour_id);
-    console.log('Fixed Loan Amount:', fixedLoanAmount);
-    console.log('EMI Options:', JSON.stringify(emi_options, null, 2));
-    console.log('============================');
-    
-    if (!tour_id) {
-      console.error('Missing tour_id');
-      return res.status(400).json({ 
-        error: 'Tour ID is required' 
+    if (loan_amount && loan_amount > 0) {
+      // Generate all EMI options with the provided loan amount
+      const monthsList = [6, 12, 18, 24, 30, 36, 48];
+      const rate = 18; // Default interest rate
+      
+      monthsList.forEach(months => {
+        const principal = parseFloat(loan_amount);
+        const monthlyRate = (rate / 100) / 12;
+        const n = parseInt(months, 10);
+        
+        let emi = 0;
+        if (!isNaN(principal) && principal > 0 && !isNaN(n) && n > 0) {
+          emi = principal * monthlyRate * Math.pow(1 + monthlyRate, n) / 
+                (Math.pow(1 + monthlyRate, n) - 1);
+          emi = Math.round(emi * 100) / 100;
+        }
+        
+        values.push([
+          tour_id,
+          loan_amount,
+          'Per Month Payment',
+          months,
+          emi,
+          emi_remarks || null,
+          emi_remarks_option1 || null,
+          emi_remarks_option2 || null,
+          emi_remarks_active || 'option1'
+        ]);
       });
+    } else if (emi_options && Array.isArray(emi_options) && emi_options.length > 0) {
+      values = emi_options.map(opt => [
+        tour_id,
+        opt.loan_amount,
+        opt.particulars,
+        opt.months,
+        opt.emi,
+        opt.emi_remarks || emi_remarks || null,
+        opt.emi_remarks_option1 || emi_remarks_option1 || null,
+        opt.emi_remarks_option2 || emi_remarks_option2 || null,
+        opt.emi_remarks_active || emi_remarks_active || 'option1'
+      ]);
     }
-    
-    if (!fixedLoanAmount && (!Array.isArray(emi_options) || emi_options.length === 0)) {
-      console.error('Missing loan amount and no EMI options provided');
-      return res.status(400).json({ 
-        error: 'Loan amount is required' 
-      });
+
+    if (values.length > 0) {
+      await conn.query(
+        `INSERT INTO emi_options 
+         (tour_id, loan_amount, particulars, months, emi, emi_remarks, emi_remarks_option1, emi_remarks_option2, emi_remarks_active)
+         VALUES ?`,
+        [values]
+      );
     }
-    
-    let optionsToInsert = [];
-    
-    // If fixed loan amount is provided, generate EMI options
-    if (fixedLoanAmount) {
-      const loanAmount = parseFloat(fixedLoanAmount);
-      if (isNaN(loanAmount) || loanAmount <= 0) {
-        return res.status(400).json({ 
-          error: 'Valid loan amount is required' 
-        });
-      }
-      
-      // Generate EMI options for standard months
-      const standardMonths = [6, 12, 18, 24, 30, 36, 48];
-      optionsToInsert = standardMonths.map(months => ({
-        particulars: 'Per Month Payment',
-        months: months,
-        loan_amount: loanAmount,
-        emi: calculateEMI(loanAmount, months)
-      }));
-    } else if (Array.isArray(emi_options) && emi_options.length > 0) {
-      // Use provided options (for backward compatibility)
-      optionsToInsert = emi_options;
-    } else {
-      return res.status(400).json({ 
-        error: 'Either loan amount or emi_options array is required' 
-      });
-    }
-    
-    console.log('Options to insert:', JSON.stringify(optionsToInsert, null, 2));
-    
-    // Validate each option
-    for (let i = 0; i < optionsToInsert.length; i++) {
-      const option = optionsToInsert[i];
-      
-      if (!option.particulars) {
-        return res.status(400).json({ 
-          error: `Option ${i + 1} missing particulars field` 
-        });
-      }
-      
-      if (!option.months) {
-        return res.status(400).json({ 
-          error: `Option ${i + 1} missing months field` 
-        });
-      }
-      
-      if (option.loan_amount === undefined || option.loan_amount === null) {
-        return res.status(400).json({ 
-          error: `Option ${i + 1} missing loan_amount field` 
-        });
-      }
-      
-      // Auto-calculate EMI if not provided
-      if (option.emi === undefined || option.emi === null) {
-        option.emi = calculateEMI(option.loan_amount, option.months);
-      }
-    }
-    
-    // Prepare bulk insert
-    const values = optionsToInsert.map(option => [
-      tour_id,
-      parseFloat(option.loan_amount),
-      option.particulars,
-      parseInt(option.months, 10),
-      parseFloat(option.emi)
-    ]);
-    
-    console.log('Prepared values for insertion:', values);
-    
-    const query = `
-      INSERT INTO emi_options (tour_id, loan_amount, particulars, months, emi)
-      VALUES ?
-    `;
-    
-    const [result] = await db.query(query, [values]);
-    
+
+    await conn.commit();
     res.status(201).json({
-      message: `${optionsToInsert.length} EMI options created successfully`,
-      affectedRows: result.affectedRows,
-      insertId: result.insertId
+      success: true,
+      message: `${values.length} EMI options saved successfully`,
+      tour_id
     });
-  } catch (error) {
-    console.error('=== Error creating bulk EMI options ===');
-    console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
-    
-    res.status(500).json({ 
-      error: 'Failed to create EMI options',
-      details: error.message 
-    });
+  } catch (err) {
+    await conn.rollback();
+    console.error('Error saving EMI options:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    conn.release();
   }
 });
 
-// Add a new route for calculating EMI
+
+
+// Calculate EMI endpoint
 router.post('/calculate', (req, res) => {
   try {
     const { loan_amount, months, interest_rate = 18 } = req.body;
@@ -230,7 +202,7 @@ router.post('/calculate', (req, res) => {
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { loan_amount, particulars, months, emi } = req.body;
+    const { loan_amount, particulars, months, emi, emi_remarks, emi_remarks_option1, emi_remarks_option2, emi_remarks_active } = req.body;
     
     if (!loan_amount || !particulars || !months || emi === undefined) {
       return res.status(400).json({ 
@@ -240,15 +212,19 @@ router.put('/:id', async (req, res) => {
     
     const query = `
       UPDATE emi_options 
-      SET loan_amount = ?, particulars = ?, months = ?, emi = ?, updated_at = CURRENT_TIMESTAMP
+      SET loan_amount = ?, particulars = ?, months = ?, emi = ?, emi_remarks = ?, emi_remarks_option1 = ?, emi_remarks_option2 = ?, emi_remarks_active = ?, updated_at = CURRENT_TIMESTAMP
       WHERE emi_option_id = ?
     `;
     
-    const [result] = await db.execute(query, [
+    const [result] = await pool.query(query, [
       loan_amount,
       particulars,
       months,
       emi,
+      emi_remarks || null,
+      emi_remarks_option1 || null,
+      emi_remarks_option2 || null,
+      emi_remarks_active || 'option1',
       id
     ]);
     
@@ -263,7 +239,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE EMI option
+
+// DELETE single EMI option
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -281,7 +258,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// DELETE all EMI options for a tour
+// DELETE ALL EMI options for a tour
 router.delete('/tour/:tour_id', async (req, res) => {
   try {
     const { tour_id } = req.params;
@@ -289,27 +266,15 @@ router.delete('/tour/:tour_id', async (req, res) => {
     const [result] = await db.execute(query, [tour_id]);
     
     res.json({
+      success: true,
       message: `${result.affectedRows} EMI options deleted successfully`
     });
   } catch (error) {
     console.error('Error deleting EMI options:', error);
-    res.status(500).json({ error: 'Failed to delete EMI options' });
-  }
-});
-
-// DELETE ALL EMI options for a tour
-router.delete('/tour/:tour_id', async (req, res) => {
-  try {
-    const [result] = await pool.query(
-      'DELETE FROM emi_options WHERE tour_id = ?',
-      [req.params.tour_id]
-    );
-    res.json({ 
-      success: true, 
-      message: `Deleted ${result.affectedRows} EMI options` 
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
     });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
   }
 });
 

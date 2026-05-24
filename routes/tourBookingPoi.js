@@ -19,7 +19,7 @@ router.get('/tour/:tour_id', async (req, res) => {
 
 // CREATE single POI item
 router.post('/', async (req, res) => {
-  const { tour_id, title, item, sort_order } = req.body;
+  const { tour_id, title, item, sort_order, booking_remarks, booking_remarks_option1, booking_remarks_option2, booking_remarks_active } = req.body;
 
   if (!tour_id || !item) {
     return res.status(400).json({ message: 'tour_id and item are required' });
@@ -27,9 +27,9 @@ router.post('/', async (req, res) => {
 
   try {
     const [result] = await pool.query(
-      `INSERT INTO tour_booking_poi (tour_id, title, item, sort_order)
-       VALUES (?, ?, ?, ?)`,
-      [tour_id, title || null, item.trim(), sort_order || 1]
+      `INSERT INTO tour_booking_poi (tour_id, title, item, sort_order, booking_remarks, booking_remarks_option1, booking_remarks_option2, booking_remarks_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [tour_id, title || null, item.trim(), sort_order || 1, booking_remarks || null, booking_remarks_option1 || null, booking_remarks_option2 || null, booking_remarks_active || 'option1']
     );
 
     res.status(201).json({
@@ -87,7 +87,7 @@ router.delete('/tour/:tour_id', async (req, res) => {
 });
 
 router.post('/bulk', async (req, res) => {
-  const { tour_id, items } = req.body;
+  const { tour_id, items, booking_remarks, booking_remarks_option1, booking_remarks_option2, booking_remarks_active } = req.body;
 
   if (!tour_id || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: 'tour_id and items[] are required' });
@@ -99,15 +99,19 @@ router.post('/bulk', async (req, res) => {
   try {
     const values = items.map((p, idx) => [
       tour_id,
-      null,                       // title optional
-      p.item,                     // <-- FIXED
+      null,
+      p.item,
       idx + 1,
-      p.amount_details || null    // <-- FIXED
+      p.amount_details || null,
+      p.booking_remarks || booking_remarks || null,
+      p.booking_remarks_option1 || booking_remarks_option1 || null,
+      p.booking_remarks_option2 || booking_remarks_option2 || null,
+      p.booking_remarks_active || booking_remarks_active || 'option1'
     ]);
 
     await conn.query(
       `INSERT INTO tour_booking_poi 
-        (tour_id, title, item, sort_order, amount_details)
+        (tour_id, title, item, sort_order, amount_details, booking_remarks, booking_remarks_option1, booking_remarks_option2, booking_remarks_active)
        VALUES ?`,
       [values]
     );
@@ -118,7 +122,6 @@ router.post('/bulk', async (req, res) => {
       tour_id,
       added_count: items.length
     });
-
   } catch (err) {
     await conn.rollback();
     res.status(500).json({ error: err.message });
@@ -126,6 +129,7 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
+
 
 
 // DELETE ALL POI items for a tour
