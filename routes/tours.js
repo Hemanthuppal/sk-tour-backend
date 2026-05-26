@@ -187,6 +187,7 @@ router.post('/', async (req, res) => {
 
 // UPDATE
 // Update the PUT endpoint in tours.js
+// routes/tours.js - FIXED PUT endpoint
 router.put('/:id', async (req, res) => {
   const tourId = req.params.id;
   const updateData = req.body;
@@ -201,22 +202,10 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: "Tour not found" });
     }
 
-    // List of allowed fields to update
+    // List of allowed fields to update - ONLY fields that exist in tours table
     const allowedFields = [
       'title', 'tour_type', 'primary_destination_id', 'country_id', 'duration_days',
-      'overview', 'base_price_adult', 'emi_price', 'is_international', 'status',
-      'cost_remarks', 'hotel_remarks', 'transport_remarks', 'emi_remarks',
-      'booking_poi_remarks', 'cancellation_remarks', 'optional_tour_remarks',
-      'departure_description', 'instruction_description',
-      'cost_remarks_active', 'hotel_remarks_active', 'transport_remarks_active',
-      'emi_remarks_active', 'booking_poi_remarks_active', 'cancellation_remarks_active',
-      'optional_tour_remarks_active', 'departure_description_active', 'instruction_description_active',
-      'cost_remarks_option1', 'cost_remarks_option2', 'hotel_remarks_option1', 'hotel_remarks_option2',
-      'transport_remarks_option1', 'transport_remarks_option2', 'emi_remarks_option1', 'emi_remarks_option2',
-      'booking_poi_remarks_option1', 'booking_poi_remarks_option2', 'cancellation_remarks_option1',
-      'cancellation_remarks_option2', 'optional_tour_remarks_option1', 'optional_tour_remarks_option2',
-      'departure_description_option1', 'departure_description_option2',
-      'instruction_description_option1', 'instruction_description_option2'
+      'overview', 'base_price_adult', 'emi_price', 'is_international', 'status'
     ];
 
     const filteredData = {};
