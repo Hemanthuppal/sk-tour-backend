@@ -855,8 +855,8 @@ router.get('/tour/full/honeymoon/:tour_id', async (req, res) => {
   }
 });
 
+// In routes/tours.js - Update the GET /tour/full/group/:tour_id endpoint
 router.get('/tour/full/group/:tour_id', async (req, res) => {
-  // ... existing code (unchanged) ...
   const tourId = req.params.tour_id;
 
   try {
@@ -876,8 +876,17 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
 
     response.basic_details = tourRows[0];
 
-    // 2️⃣ DEPARTURES
-    const [departures] = await pool.query(`SELECT * FROM tour_departures WHERE tour_id = ?`, [tourId]);
+    // 2️⃣ DEPARTURES - Include cost remarks fields
+    const [departures] = await pool.query(`
+      SELECT 
+        d.*,
+        d.cost_remarks_option1,
+        d.cost_remarks_option2,
+        d.cost_remarks_active,
+        d.cost_remarks
+      FROM tour_departures d 
+      WHERE d.tour_id = ?
+    `, [tourId]);
     response.departures = departures;
 
     // 3️⃣ IMAGES
@@ -896,17 +905,13 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
     const [itinerary] = await pool.query(`SELECT * FROM tour_itineraries WHERE tour_id = ?`, [tourId]);
     response.itinerary = itinerary;
 
-    // 7️⃣ COSTS
+    // 7️⃣ COSTS - Not used for Group tours, but keep for consistency
     const [costs] = await pool.query(`SELECT * FROM tour_costs WHERE tour_id = ?`, [tourId]);
     response.costs = costs;
 
     // 8️⃣ HOTELS
     const [hotels] = await pool.query(`SELECT * FROM tour_hotels WHERE tour_id = ?`, [tourId]);
     response.hotels = hotels;
-
-    // 9️⃣ TRANSPORT
-    const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
-    response.transport = transport;
 
     // ========================
     // VISA DATA
@@ -935,6 +940,10 @@ router.get('/tour/full/group/:tour_id', async (req, res) => {
       action2_file_url: form.action2_file ? `/api/visa/file/${form.action2_file}` : null
     }));
     response.visa_forms = processedVisaForms;
+
+    // 9️⃣ TRANSPORT
+    const [transport] = await pool.query(`SELECT * FROM tour_transports WHERE tour_id = ?`, [tourId]);
+    response.transport = transport;
 
     // 🔟 BOOKING POI
     const [poi] = await pool.query(`SELECT * FROM tour_booking_poi WHERE tour_id = ?`, [tourId]);

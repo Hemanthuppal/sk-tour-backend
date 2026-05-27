@@ -7,7 +7,11 @@ router.get('/tour/:tour_id', async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT *, 
-      (total_seats - booked_seats) AS available_seats
+      (total_seats - booked_seats) AS available_seats,
+      cost_remarks_option1,
+      cost_remarks_option2,
+      cost_remarks_active,
+      cost_remarks
       FROM tour_departures 
       WHERE tour_id = ? 
       ORDER BY 
@@ -49,6 +53,12 @@ router.post('/', async (req, res) => {
       infant_price = null,
       total_seats = 40,
       booked_seats = 0,
+      // Cost remarks fields
+      cost_remarks = null,
+      cost_remarks_option1 = null,
+      cost_remarks_option2 = null,
+      cost_remarks_active = 'option1',
+      // Hotel price fields
       three_star_twin = null,
       three_star_triple = null,
       three_star_child_with_bed = null,
@@ -82,6 +92,7 @@ router.post('/', async (req, res) => {
         departure_text, start_date, end_date, departure_date, return_date,
         status, adult_price, child_price, infant_price,
         total_seats, booked_seats,
+        cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active,
         three_star_twin, three_star_triple, 
         three_star_child_with_bed, three_star_child_without_bed,
         three_star_infant, three_star_single,
@@ -91,7 +102,7 @@ router.post('/', async (req, res) => {
         five_star_twin, five_star_triple,
         five_star_child_with_bed, five_star_child_without_bed,
         five_star_infant, five_star_single
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -99,6 +110,7 @@ router.post('/', async (req, res) => {
       departure_text, start_date, end_date, departure_date, return_date,
       status, adult_price, child_price, infant_price,
       total_seats, booked_seats,
+      cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active,
       three_star_twin, three_star_triple,
       three_star_child_with_bed, three_star_child_without_bed,
       three_star_infant, three_star_single,
@@ -161,6 +173,11 @@ router.post('/bulk', async (req, res) => {
         ? (dep.description_option2 || dep.description)
         : (dep.description_option1 || dep.description);
       
+      // Get cost remarks based on active option
+      const activeCostRemarks = dep.cost_remarks_active === 'option2'
+        ? (dep.cost_remarks_option2 || dep.cost_remarks)
+        : (dep.cost_remarks_option1 || dep.cost_remarks);
+      
       return [
         tour_id,
         dep.tour_type || 'Group',
@@ -179,6 +196,10 @@ router.post('/bulk', async (req, res) => {
         dep.infant_price || null,
         dep.total_seats || (isIndividual ? 0 : 40),
         dep.booked_seats || 0,
+        activeCostRemarks,
+        dep.cost_remarks_option1 || null,
+        dep.cost_remarks_option2 || null,
+        dep.cost_remarks_active || 'option1',
         dep.three_star_twin || null,
         dep.three_star_triple || null,
         dep.three_star_child_with_bed || null,
@@ -208,6 +229,7 @@ router.post('/bulk', async (req, res) => {
         departure_text, start_date, end_date, departure_date, return_date,
         status, adult_price, child_price, infant_price,
         total_seats, booked_seats,
+        cost_remarks, cost_remarks_option1, cost_remarks_option2, cost_remarks_active,
         three_star_twin, three_star_triple, 
         three_star_child_with_bed, three_star_child_without_bed,
         three_star_infant, three_star_single,
@@ -239,7 +261,6 @@ router.post('/bulk', async (req, res) => {
     conn.release();
   }
 });
-
 
 // UPDATE departure - ENHANCED with validation
 router.put('/:id', async (req, res) => {
